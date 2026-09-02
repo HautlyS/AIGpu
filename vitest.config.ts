@@ -20,6 +20,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: "server-only", replacement: resolve("scripts/server-only-stub.ts") },
       { find: "aigpu/node", replacement: resolve("packages/aigpu-api/src/node.ts") },
       { find: "aigpu/mock", replacement: resolve("packages/aigpu-api/src/mock.ts") },
       { find: "aigpu/scene", replacement: resolve("packages/aigpu-api/src/scene.ts") },

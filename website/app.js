@@ -90,6 +90,260 @@ function drawAgent(ctx, now, compact = false) {
   }
 }
 
+// Example canvas renderers — each draws a unique GPU-like effect
+const exampleRenderers = {
+  cockpit(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0a1424";
+    ctx.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    // Radial glow
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.45);
+    glow.addColorStop(0, "rgba(114,233,255,0.25)");
+    glow.addColorStop(0.5, "rgba(114,233,255,0.04)");
+    glow.addColorStop(1, "transparent");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+    // Orbiting rings
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w * 0.35 - i * 20, h * 0.15 - i * 6, now * 0.3 + i * 1.1, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(114,233,255,${0.6 - i * 0.15})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    // Progress arc
+    const progress = (Math.sin(now * 0.5) + 1) / 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, w * 0.18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.strokeStyle = "rgba(114,233,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    // Core dot
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, 12);
+    core.addColorStop(0, "rgba(255,255,255,0.9)");
+    core.addColorStop(0.3, "rgba(114,233,255,0.8)");
+    core.addColorStop(1, "transparent");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Label
+    ctx.fillStyle = "rgba(114,233,255,0.6)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("OPS", cx, h - 12);
+  },
+
+  replay(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#12182c";
+    ctx.fillRect(0, 0, w, h);
+    // Timeline line
+    const lx = w * 0.15, rx = w * 0.85;
+    const ly = h * 0.65, ry = h * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(rx, ry);
+    const lineGrad = ctx.createLinearGradient(lx, ly, rx, ry);
+    lineGrad.addColorStop(0, "rgba(158,139,255,0.8)");
+    lineGrad.addColorStop(0.5, "rgba(114,233,255,0.8)");
+    lineGrad.addColorStop(1, "transparent");
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Nodes along the line
+    const nodes = [
+      { t: 0.2, color: [114, 233, 255] },
+      { t: 0.45, color: [158, 139, 255] },
+      { t: 0.7, color: [103, 239, 170] },
+    ];
+    for (const { t, color } of nodes) {
+      const nx = lx + (rx - lx) * t;
+      const ny = ly + (ry - ly) * t;
+      const pulse = 1 + Math.sin(now * 2 + t * 6) * 0.2;
+      ctx.beginPath();
+      ctx.arc(nx, ny, 6 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${color.join(",")},0.3)`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(nx, ny, 4, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${color.join(",")},0.9)`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    // Scanning beam
+    const scanT = (now * 0.3) % 1;
+    const sx = lx + (rx - lx) * scanT;
+    const sy = ly + (ry - ly) * scanT;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fill();
+    // Label
+    ctx.fillStyle = "rgba(158,139,255,0.6)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("REPLAY", w / 2, h - 12);
+  },
+
+  neural(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#211329";
+    ctx.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    // Background glow
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.4);
+    glow.addColorStop(0, "rgba(255,126,242,0.3)");
+    glow.addColorStop(0.5, "rgba(158,139,255,0.08)");
+    glow.addColorStop(1, "transparent");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+    // Rings
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let i = 0; i < 2; i++) {
+      const rx = 60 + i * 35;
+      const ry = 25 + i * 12;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, now * 0.2 + i * 0.8, 0, Math.PI * 2);
+      ctx.strokeStyle = i === 0 ? "rgba(158,139,255,0.6)" : "rgba(114,233,255,0.4)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+    // Core
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, 18);
+    core.addColorStop(0, "rgba(255,255,255,0.95)");
+    core.addColorStop(0.25, "rgba(255,126,242,0.8)");
+    core.addColorStop(1, "transparent");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Label
+    ctx.fillStyle = "rgba(255,126,242,0.6)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("WGSL", cx, h - 12);
+  },
+
+  fullscreen(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    // Gradient sweep
+    const angle = now * 0.4;
+    const x1 = w / 2 + Math.cos(angle) * w * 0.4;
+    const y1 = h / 2 + Math.sin(angle) * h * 0.4;
+    const grad = ctx.createRadialGradient(x1, y1, 0, w / 2, h / 2, w * 0.6);
+    grad.addColorStop(0, "rgba(114,233,255,0.5)");
+    grad.addColorStop(0.4, "rgba(158,139,255,0.2)");
+    grad.addColorStop(1, "#0c1428");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    // Grid overlay
+    ctx.strokeStyle = "rgba(114,233,255,0.08)";
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < w; x += 20) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 20) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    // Label
+    ctx.fillStyle = "rgba(114,233,255,0.5)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("GPU", w / 2, h - 12);
+  },
+
+  compute(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0b1222";
+    ctx.fillRect(0, 0, w, h);
+    // Particle field
+    const count = 60;
+    for (let i = 0; i < count; i++) {
+      const seed = i * 137.508;
+      const px = ((seed * 7.3 + now * 20 * (0.3 + (i % 5) * 0.15)) % w + w) % w;
+      const py = ((seed * 3.7 + now * 10 * (0.2 + (i % 3) * 0.1)) % h + h) % h;
+      const size = 1.5 + Math.sin(now + i) * 0.8;
+      const alpha = 0.3 + Math.sin(now * 1.5 + i * 0.5) * 0.2;
+      ctx.beginPath();
+      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.fillStyle = i % 3 === 0
+        ? `rgba(114,233,255,${alpha})`
+        : i % 3 === 1
+        ? `rgba(158,139,255,${alpha})`
+        : `rgba(103,239,170,${alpha})`;
+      ctx.fill();
+    }
+    // Connection lines
+    ctx.strokeStyle = "rgba(114,233,255,0.06)";
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 15; i++) {
+      const seed = i * 137.508;
+      const x1 = ((seed * 7.3 + now * 20 * (0.3 + (i % 5) * 0.15)) % w + w) % w;
+      const y1 = ((seed * 3.7 + now * 10 * (0.2 + (i % 3) * 0.1)) % h + h) % h;
+      const x2 = ((seed * 11.3 + now * 20 * (0.3 + ((i + 3) % 5) * 0.15)) % w + w) % w;
+      const y2 = ((seed * 5.1 + now * 10 * (0.2 + ((i + 2) % 3) * 0.1)) % h + h) % h;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    // Label
+    ctx.fillStyle = "rgba(103,239,170,0.5)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("COMPUTE", w / 2, h - 12);
+  },
+
+  gallery(ctx, now) {
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0b0e1b";
+    ctx.fillRect(0, 0, w, h);
+    // 8 color swatches animating
+    const colors = [
+      [114, 233, 255], [158, 139, 255], [255, 126, 242], [255, 179, 107],
+      [103, 239, 170], [255, 119, 153], [114, 233, 255], [158, 139, 255],
+    ];
+    const cols = 4, rows = 2;
+    const cw = w / cols, ch = (h - 24) / rows;
+    for (let i = 0; i < 8; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = col * cw, y = row * ch;
+      const pulse = 0.15 + Math.sin(now * 1.2 + i * 0.8) * 0.1;
+      const [r, g, b] = colors[i];
+      ctx.fillStyle = `rgba(${r},${g},${b},${pulse})`;
+      ctx.fillRect(x + 2, y + 2, cw - 4, ch - 4);
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4);
+    }
+    // Label
+    ctx.fillStyle = "rgba(158,139,255,0.5)";
+    ctx.font = "10px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("GALLERY", w / 2, h - 8);
+  },
+};
+
 function renderText() {
   const percent = `${Math.round(state.progress * 100)}%`;
   const status = document.querySelector("#stage-status");
@@ -116,6 +370,16 @@ function renderText() {
   if (activityOutput) activityOutput.textContent = `${Math.round(state.activity * 100)}%`;
 }
 
+// Setup example canvases
+const exampleCanvases = [];
+document.querySelectorAll(".example-canvas").forEach((canvas) => {
+  const ctx = setupCanvas(canvas);
+  const type = canvas.dataset.visual;
+  if (ctx && type && exampleRenderers[type]) {
+    exampleCanvases.push({ ctx, type });
+  }
+});
+
 const heroContext = setupCanvas(document.querySelector("#hero-canvas"));
 const playgroundContext = setupCanvas(document.querySelector("#playground-canvas"));
 let previous = performance.now();
@@ -125,6 +389,9 @@ function animate(now) {
   state.phase += delta * (0.8 + state.activity * 2);
   if (heroContext) drawAgent(heroContext, now / 1000, true);
   if (playgroundContext) drawAgent(playgroundContext, now / 1000);
+  for (const { ctx, type } of exampleCanvases) {
+    exampleRenderers[type](ctx, now / 1000);
+  }
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
