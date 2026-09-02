@@ -3,36 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090b16">
-  <meta name="description" content="AIGpu — GPU animations for AI agents. Every capability, every example, animated.">
-  <title>AIGpu — GPU animations for AI agents</title>
+  <meta name="theme-color" content="#000">
+  <meta name="description" content="AIGpu — GPU animations for AI agents. WebGPU TypeScript library.">
+  <title>AIGpu // GPU for AI agents</title>
   <link rel="stylesheet" href="./styles.css">
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 </head>
 <body>
+  <div class="ascii-scanlines"></div>
   <div id="app">
     <header class="site-header">
       <a class="brand" href="#top" aria-label="AIGpu home"><span class="brand-mark">A</span><span>AIGpu</span></a>
       <nav aria-label="Primary navigation">
-        <a href="#showcase">Showcase</a>
+        <a href="#showcase">Demo</a>
         <a href="#examples">Examples</a>
-        <a href="#integrations">Integrations</a>
-        <a class="nav-cta" href="https://github.com/hautlys/AIGpu">View source</a>
+        <a href="#integrations">Integr</a>
+        <a class="nav-cta" href="https://github.com/hautlys/AIGpu">Source</a>
       </nav>
     </header>
 
     <main id="top">
-      <!-- HERO -->
       <section class="hero section-shell">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="pulse-dot"></span> Open GPU interface layer</p>
+          <p class="eyebrow">open gpu interface layer</p>
           <h1>Make agent state <em>visible.</em></h1>
-          <p class="hero-lede">AIGpu turns serializable agent events into expressive GPU visuals. 20+ examples. Every WebGPU capability. Zero framework lock-in.</p>
+          <p class="hero-lede">AIGpu turns serializable agent events into expressive GPU visuals. WebGPU + WGSL. Framework-free. Offline-first. Every capability animated below.</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="#examples">Browse all examples <span>&darr;</span></a>
-            <a class="button button-quiet" href="https://github.com/hautlys/AIGpu">Read the repository <span>&nearr;</span></a>
+            <a class="button button-primary" href="#examples">Browse examples</a>
+            <a class="button button-quiet" href="https://github.com/hautlys/AIGpu">Read source</a>
           </div>
-          <div class="trust-row"><span>MIT licensed</span><span>WebGPU + WGSL</span><span>HTML &middot; React &middot; Vue &middot; Svelte</span><span>Offline-first</span></div>
+          <div class="trust-row"><span>MIT licensed</span><span>WebGPU + WGSL</span><span>HTML / React / Vue / Svelte</span><span>Offline-first</span></div>
         </div>
         <div class="hero-orb" aria-label="Animated AIGpu status visual">
           <canvas id="hero-canvas" width="720" height="520"></canvas>
@@ -40,19 +40,18 @@
         </div>
       </section>
 
-      <!-- LIVE PLAYGROUND -->
       <section id="showcase" class="section-shell section-block">
-        <div class="section-heading"><div><p class="eyebrow">Live playground</p><h2>One state contract. Any interface.</h2></div><p class="section-note">Simulate agent events in real time. The same patches work with any renderer.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">live playground</p><h2>One state contract. Any interface.</h2></div><p class="section-note">Simulate agent events in real time. The same patches drive any renderer.</p></div>
         <div class="playground-grid">
           <div class="demo-stage">
-            <div class="stage-toolbar"><span class="toolbar-title">agent-ops / live preview</span><span class="toolbar-status"><i></i> local simulation</span></div>
+            <div class="stage-toolbar"><span class="toolbar-title">agent-ops / live</span><span class="toolbar-status"><i></i> local simulation</span></div>
             <canvas id="playground-canvas" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
             <div class="stage-footer"><span id="stage-status">{{ status }}</span><span class="stage-progress"><span id="stage-progress-bar" :style="{ width: progress + '%' }"></span></span><span id="stage-progress-label">{{ progress }}%</span></div>
           </div>
           <aside class="control-panel">
-            <p class="panel-kicker">Event bridge</p>
+            <p class="panel-kicker">// event bridge</p>
             <h3>Drive pixels with plain data</h3>
-            <p class="muted">The controls below simulate the same patches your queue, worker, WebSocket, or model orchestrator can send.</p>
+            <p class="muted">Same patches your queue, worker, WebSocket, or orchestrator sends.</p>
             <div class="control-group"><label for="status-select">Status</label><select id="status-select" v-model="status"><option>idle</option><option>thinking</option><option>working</option><option>waiting</option><option>success</option><option>error</option></select></div>
             <div class="control-group"><label for="progress-range">Progress <output id="progress-output">{{ progress }}%</output></label><input id="progress-range" type="range" min="0" max="100" v-model.number="progress"></div>
             <div class="control-group"><label for="activity-range">Activity <output id="activity-output">{{ activity }}%</output></label><input id="activity-range" type="range" min="0" max="100" v-model.number="activity"></div>
@@ -62,16 +61,15 @@
         </div>
       </section>
 
-      <!-- COMPREHENSIVE EXAMPLES -->
       <section id="examples" class="section-shell section-block">
         <div class="section-heading">
-          <div><p class="eyebrow">Source library</p><h2>Every capability. Animated. Copyable.</h2></div>
+          <div><p class="eyebrow">source library</p><h2>Every capability. Animated. Copyable.</h2></div>
           <div class="filter-group" role="group" aria-label="Filter examples">
             <button class="filter-button" :class="{ active: filter === 'all' }" @click="filter = 'all'">All <span class="filter-count">{{ examples.length }}</span></button>
             <button v-for="cat in categories" :key="cat.id" class="filter-button" :class="{ active: filter === cat.id }" @click="filter = cat.id">{{ cat.label }} <span class="filter-count">{{ examplesByCategory(cat.id).length }}</span></button>
           </div>
         </div>
-        <div class="search-row"><input type="search" class="search-input" placeholder="Search examples..." v-model="search" aria-label="Search examples"></div>
+        <div class="search-row"><input type="search" class="search-input" placeholder="> grep examples..." v-model="search" aria-label="Search examples"></div>
         <div class="example-grid">
           <article v-for="ex in filteredExamples" :key="ex.id" class="example-card" :data-tags="ex.tags">
             <canvas class="example-canvas" :data-visual="ex.id" width="400" height="220"></canvas>
@@ -86,36 +84,33 @@
             </div>
           </article>
         </div>
-        <p v-if="filteredExamples.length === 0" class="empty-state">No examples match your filter.</p>
+        <p v-if="filteredExamples.length === 0" class="empty-state">> no matches found</p>
       </section>
 
-      <!-- FRAMEWORK INTEGRATIONS -->
       <section id="integrations" class="section-shell section-block">
-        <div class="section-heading"><div><p class="eyebrow">Agnostic by construction</p><h2>Use the layer you already have.</h2></div><p class="section-note">The core owns GPU resources. Your UI owns component lifetime. Your application owns agent state.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">agnostic by construction</p><h2>Use the layer you already have.</h2></div><p class="section-note">Core owns GPU. UI owns component lifetime. App owns state.</p></div>
         <div class="integration-grid">
           <article v-for="(fw, idx) in frameworks" :key="fw.name" class="integration-card">
             <div class="card-index">{{ String(idx + 1).padStart(2, '0') }}</div>
             <h3>{{ fw.name }}</h3>
             <p>{{ fw.desc }}</p>
-            <button class="copy-trigger" @click="copyCode(fw.code, $event)">Copy usage <span>&#x29C9;</span></button>
+            <button class="copy-trigger" @click="copyCode(fw.code, $event)">Copy usage</button>
           </article>
         </div>
       </section>
 
-      <!-- INSTALL -->
       <section class="section-shell install-banner">
-        <div><p class="eyebrow">Ready to build</p><h2>Install the smallest surface.</h2><p>Start with the core, add an adapter only when needed, and keep your application in control of state.</p></div>
-        <div class="install-command"><code>npm install aigpu</code><button class="copy-trigger" @click="copyCode('npm install aigpu', $event)">Copy <span>&#x29C9;</span></button></div>
+        <div><p class="eyebrow">ready to build</p><h2>npm install aigpu</h2><p>Core + adapter only when needed. Application owns state.</p></div>
+        <div class="install-command"><code>npm install aigpu</code><button class="copy-trigger" @click="copyCode('npm install aigpu', $event)">Copy</button></div>
       </section>
     </main>
 
     <footer class="site-footer section-shell">
       <div><a class="brand" href="#top"><span class="brand-mark">A</span><span>AIGpu</span></a><p>GPU animations for AI agents.</p></div>
-      <div class="footer-links"><a href="https://github.com/hautlys/AIGpu">GitHub</a><a href="https://github.com/hautlys/AIGpu/blob/main/PRODUCTION.md">Production</a><a href="https://github.com/hautlys/AIGpu/blob/main/LICENSE">MIT License</a></div>
-      <p class="footer-note">Open source &middot; offline-first &middot; model agnostic</p>
+      <div class="footer-links"><a href="https://github.com/hautlys/AIGpu">GitHub</a><a href="https://github.com/hautlys/AIGpu/blob/main/PRODUCTION.md">Production</a><a href="https://github.com/hautlys/AIGpu/blob/main/LICENSE">MIT</a></div>
+      <p class="footer-note">Open source / offline-first / model agnostic</p>
     </footer>
   </div>
-
   <script type="module" src="./app.js"></script>
 </body>
 </html>
