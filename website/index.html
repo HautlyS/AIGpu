@@ -17,7 +17,7 @@
       <nav aria-label="Primary navigation">
         <a href="#showcase">Demo</a>
         <a href="#examples">Examples</a>
-        <a href="#integrations">Integr</a>
+        <a href="#integrations">Integrations</a>
         <a class="nav-cta" href="https://github.com/hautlys/AIGpu">Source</a>
       </nav>
     </header>
@@ -71,16 +71,16 @@
         </div>
         <div class="search-row"><input type="search" class="search-input" placeholder="> grep examples..." v-model="search" aria-label="Search examples"></div>
         <div class="example-grid">
-          <article v-for="ex in filteredExamples" :key="ex.id" class="example-card" :data-tags="ex.tags">
+          <article v-for="ex in filteredExamples" :key="ex.id" class="example-card" :data-tags="ex.tags" @click="openExample(ex)">
             <canvas class="example-canvas" :data-visual="ex.id" width="400" height="220"></canvas>
             <div class="example-body">
               <div class="example-meta">
                 <span>{{ ex.category }}</span>
-                <a :href="ex.source" target="_blank" rel="noopener">source &nearr;</a>
+                <a :href="ex.source" target="_blank" rel="noopener" @click.stop>source &nearr;</a>
               </div>
               <h3>{{ ex.title }}</h3>
               <p>{{ ex.description }}</p>
-              <button class="copy-trigger" @click="copyCode(ex.code, $event)">Copy source <span>&#x29C9;</span></button>
+              <button class="copy-trigger" @click.stop="copyCode(ex.code, $event)">Copy source</button>
             </div>
           </article>
         </div>
@@ -88,13 +88,14 @@
       </section>
 
       <section id="integrations" class="section-shell section-block">
-        <div class="section-heading"><div><p class="eyebrow">agnostic by construction</p><h2>Use the layer you already have.</h2></div><p class="section-note">Core owns GPU. UI owns component lifetime. App owns state.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">framework integrations</p><h2>Full integration for each framework.</h2></div><p class="section-note">Click any card to see the complete integration code.</p></div>
         <div class="integration-grid">
-          <article v-for="(fw, idx) in frameworks" :key="fw.name" class="integration-card">
+          <article v-for="(fw, idx) in frameworks" :key="fw.name" class="integration-card" @click="openFramework(fw)">
             <div class="card-index">{{ String(idx + 1).padStart(2, '0') }}</div>
             <h3>{{ fw.name }}</h3>
             <p>{{ fw.desc }}</p>
-            <button class="copy-trigger" @click="copyCode(fw.code, $event)">Copy usage</button>
+            <canvas class="integration-canvas" :data-visual="'fw_' + fw.id" width="400" height="120"></canvas>
+            <button class="copy-trigger" @click.stop="copyCode(fw.code, $event)">View full code</button>
           </article>
         </div>
       </section>
@@ -110,6 +111,34 @@
       <div class="footer-links"><a href="https://github.com/hautlys/AIGpu">GitHub</a><a href="https://github.com/hautlys/AIGpu/blob/main/PRODUCTION.md">Production</a><a href="https://github.com/hautlys/AIGpu/blob/main/LICENSE">MIT</a></div>
       <p class="footer-note">Open source / offline-first / model agnostic</p>
     </footer>
+
+    <!-- FULLSCREEN MODAL -->
+    <div v-if="modalOpen" class="modal-overlay" @click.self="closeModal">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">
+            <p class="eyebrow">{{ modalType === 'example' ? modalExample?.category : 'Framework' }}</p>
+            <h2>{{ modalType === 'example' ? modalExample?.title : modalFramework?.name }}</h2>
+          </div>
+          <button class="modal-close" @click="closeModal">[x]</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-preview">
+            <canvas v-if="modalType === 'example'" class="modal-canvas" :data-visual="modalExample?.id" width="800" height="400"></canvas>
+            <div v-else class="modal-integration-preview">
+              <canvas class="integration-canvas-large" :data-visual="'fw_' + modalFramework?.id" width="800" height="300"></canvas>
+            </div>
+          </div>
+          <div class="modal-code">
+            <div class="code-header">
+              <span class="code-lang">{{ modalType === 'example' ? 'TypeScript' : modalFramework?.lang || 'TypeScript' }}</span>
+              <button class="copy-trigger" @click="copyCode(modalType === 'example' ? modalExample?.code : modalFramework?.code, $event)">Copy all</button>
+            </div>
+            <pre class="code-block"><code>{{ modalType === 'example' ? modalExample?.code : modalFramework?.code }}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script type="module" src="./app.js"></script>
 </body>

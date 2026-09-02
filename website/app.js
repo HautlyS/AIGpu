@@ -1,801 +1,579 @@
-const playgroundState = { status: "working", progress: 0.72, activity: 0.9, phase: 0 };
-const events = [
-  { status: "thinking", progress: 0.15, activity: 0.62 },
-  { status: "working", progress: 0.42, activity: 0.9 },
-  { status: "working", progress: 0.72, activity: 0.9 },
-  { status: "waiting", progress: 0.72, activity: 0.18 },
-  { status: "success", progress: 1, activity: 0.25 },
-];
-let eventIndex = 2;
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
 
-const CHARS = " .:-=+*#%@";
-const BRAILLE = "\u2800\u2801\u2803\u2807\u280f\u281f\u283f\u287f\u28ff";
-
-function setupCanvas(canvas) {
-  if (!canvas) return null;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  const resize = () => {
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.round(rect.width * scale));
-    canvas.height = Math.max(1, Math.round(rect.height * scale));
+// roundRect polyfill
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, radii) {
+    const r = typeof radii === 'number' ? radii : (Array.isArray(radii) ? radii[0] : 0);
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
   };
-  resize();
-  new ResizeObserver(resize).observe(canvas);
-  return ctx;
 }
 
-function asciiAt(ctx, char, x, y, size, color) {
-  ctx.fillStyle = color;
-  ctx.font = `${size}px "SF Mono", "Cascadia Code", "Fira Code", ui-monospace, monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(char, x, y);
-}
+/* ==================== ASCII RENDERERS ==================== */
 
-function drawAsciiRing(ctx, cx, cy, radius, now, speed, chars) {
-  const count = chars.length;
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2 + now * speed;
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    const brightness = Math.floor(((Math.sin(now * 2 + i * 0.5) + 1) / 2) * 255);
-    asciiAt(ctx, chars[i], x, y, 12, `rgb(${brightness},${brightness},${brightness})`);
+const asciiRings = (ctx, w, h, t, status) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const charSets = { idle: '.:-=+*#%@', thinking: ':;i1tfLCG08', working: '┤╡╢╖╕╣║╗╝╜╛', waiting: '░▒▓█', success: '1234567890', error: '!@#$%^&*()' };
+  const chars = charSets[status] || charSets.idle;
+  for (let ring = 0; ring < 5; ring++) {
+    const radius = 40 + ring * 28;
+    const segments = 24 + ring * 8;
+    const speed = status === 'working' ? 1.5 : 0.5;
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2 + t * speed * (ring % 2 ? 1 : -1);
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      const ci = (i + Math.floor(t * 4)) % chars.length;
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + Math.sin(angle + t) * 0.1})`;
+      ctx.font = `${11 + ring}px monospace`;
+      ctx.fillText(chars[ci], x, y);
+    }
   }
-}
-
-function drawAsciiWave(ctx, startX, startY, width, now, amplitude, frequency, chars) {
-  for (let i = 0; i < width; i += 8) {
-    const t = i / width;
-    const y = startY + Math.sin(t * frequency + now) * amplitude;
-    const charIdx = Math.floor(((Math.sin(t * frequency + now) + 1) / 2) * (chars.length - 1));
-    asciiAt(ctx, chars[charIdx], startX + i, y, 11, "#fff");
-  }
-}
-
-function drawAsciiBar(ctx, x, y, width, height, value, now) {
-  const filled = Math.floor(value * width / 8);
-  for (let i = 0; i < width; i += 8) {
-    const idx = Math.floor(i / 8);
-    const char = idx < filled ? "#" : ".";
-    const bright = idx < filled ? 255 : 60;
-    asciiAt(ctx, char, x + i, y, 10, `rgb(${bright},${bright},${bright})`);
-  }
-}
-
-// ─── ASCII Canvas Renderers ─────────────────────────────────────────────────
-const renderers = {
-  // S02 — Fullscreen: ASCII gradient sweep
-  s02_fullscreen(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cols = 50, rows = 25;
-    const cw = w / cols, ch = h / rows;
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const dx = (gx - cols / 2) / cols;
-        const dy = (gy - rows / 2) / rows;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const wave = Math.sin(dist * 20 - now * 3) * 0.5 + 0.5;
-        const charIdx = Math.floor(wave * (CHARS.length - 1));
-        asciiAt(ctx, CHARS[charIdx], gx * cw + cw / 2, gy * ch + ch / 2, Math.min(cw, ch) * 0.7, "#fff");
-      }
-    }
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("GPU FULLSCREEN", w / 2, h - 10);
-  },
-
-  // S03 — Sharing: two wireframe cubes sharing rotation
-  s03_sharing(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    const angle = now * 0.4;
-    // ASCII cube faces
-    const faces = ["+---+", "|   |", "+---+"];
-    for (let i = 0; i < 2; i++) {
-      const ox = (i === 0 ? -1 : 1) * w * 0.22;
-      const phase = angle + i * 0.5;
-      const skew = Math.sin(phase) * 8;
-      ctx.fillStyle = "#fff";
-      ctx.font = "11px monospace"; ctx.textAlign = "center";
-      for (let row = 0; row < 3; row++) {
-        const line = faces[row];
-        const yOff = (row - 1) * 14 + Math.sin(now + i) * 3;
-        asciiAt(ctx, line, cx + ox + skew, cy + yOff, 11, i === 0 ? "#fff" : "#888");
-      }
-    }
-    // Shared label
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("<-- shared: camera uniform -->", cx, cy + 60);
-    ctx.fillText("SHARING", w / 2, h - 10);
-  },
-
-  // S04 — Shared uniforms: two synced waves
-  s04_shared_uniforms(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    drawAsciiWave(ctx, w * 0.1, h * 0.35, w * 0.8, now, 25, 8, "._-=+*#");
-    drawAsciiWave(ctx, w * 0.1, h * 0.65, w * 0.8, now + 0.5, 20, 10, "._-=+*#");
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("globals.set({ time })", w / 2, h * 0.85);
-    ctx.fillText("SHARED UNIFORMS", w / 2, h - 10);
-  },
-
-  // S05 — Fixits: pulsing error art
-  s05_fixits(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const pulse = Math.sin(now * 4) > 0 ? "#fff" : "#555";
-    const warn = [
-      "    /\\    ",
-      "   /  \\   ",
-      "  / !! \\  ",
-      " /______\\ ",
-    ];
-    ctx.font = "13px monospace"; ctx.textAlign = "center";
-    warn.forEach((line, i) => asciiAt(ctx, line, w / 2, h / 2 - 40 + i * 18, 13, pulse));
-    ctx.fillStyle = "#888";
-    ctx.font = "9px monospace";
-    ctx.fillText('missing binding: set(color) before draw()', w / 2, h / 2 + 50);
-    ctx.fillText("ownership flip: lib -> user rejected", w / 2, h / 2 + 64);
-    ctx.fillStyle = "#555";
-    ctx.fillText("FIXITS", w / 2, h - 10);
-  },
-
-  // S06 — Scene: rotating ASCII 3D box
-  s06_scene(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    const angle = now * 0.5;
-    const cos = Math.cos, sin = Math.sin;
-    const size = 40;
-    const project = (x, y, z) => {
-      const rx = x * cos(angle) - z * sin(angle);
-      const rz = x * sin(angle) + z * cos(angle);
-      const ry = y * cos(angle * 0.3) - rz * sin(angle * 0.3);
-      const rz2 = y * sin(angle * 0.3) + rz * cos(angle * 0.3);
-      const p = 200 / (200 + rz2);
-      return [cx + rx * p, cy + ry * p, rz2];
-    };
-    const verts = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]].map(v => project(v[0]*size, v[1]*size, v[2]*size));
-    const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-    // Draw vertices as ASCII
-    verts.forEach((v, i) => {
-      const depth = v[2];
-      const bright = Math.floor(Math.max(40, 255 - depth * 0.5));
-      asciiAt(ctx, "@", v[0], v[1], 10, `rgb(${bright},${bright},${bright})`);
-    });
-    // Draw edges
-    ctx.strokeStyle = "#555";
-    ctx.lineWidth = 0.5;
-    for (const [a, b] of edges) {
-      ctx.beginPath();
-      ctx.moveTo(verts[a][0], verts[a][1]);
-      ctx.lineTo(verts[b][0], verts[b][1]);
-      ctx.stroke();
-    }
-    // Light
-    asciiAt(ctx, "*", cx + cos(now * 0.3) * 70, cy - 40, 14, "#fff");
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("SCENE", w / 2, h - 10);
-  },
-
-  // S07 — HDR post: two-pass ASCII gradient
-  s07_hdr_post(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cols = 40, rows = 20;
-    const cw = w / cols, ch = h / rows;
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const t = gx / cols;
-        const wave = Math.sin(t * 10 + now * 2) * 0.5 + 0.5;
-        const depth = Math.abs(gy / rows - 0.5);
-        const v = wave * (1 - depth * 0.5);
-        const charIdx = Math.floor(v * (CHARS.length - 1));
-        asciiAt(ctx, CHARS[charIdx], gx * cw + cw / 2, gy * ch + ch / 2, Math.min(cw, ch) * 0.6, "#fff");
-      }
-    }
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "left";
-    ctx.fillText("pass 1: rgba16float", 10, 16);
-    ctx.fillText("pass 2: post composite", 10, 28);
-    ctx.textAlign = "center";
-    ctx.fillText("HDR POST", w / 2, h - 10);
-  },
-
-  // S08 — Ping-pong: alternating ASCII blocks
-  s08_ping_pong(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const t = (now * 0.8) % 2;
-    const read = t < 1;
-    const lx = w * 0.25, rx = w * 0.75;
-    for (let i = 0; i < 2; i++) {
-      const x = i === 0 ? lx : rx;
-      const isActive = i === 0 ? read : !read;
-      const label = isActive ? "READ" : "write";
-      const block = isActive
-        ? ["+------+", "| #### |", "| #### |", "| #### |", "+------+"]
-        : ["+------+", "| ......", "| ......", "| ......", "+------+"];
-      ctx.font = "11px monospace"; ctx.textAlign = "center";
-      block.forEach((line, row) => {
-        asciiAt(ctx, line, x, h / 2 - 30 + row * 14, 11, isActive ? "#fff" : "#444");
-      });
-      asciiAt(ctx, label, x, h / 2 + 55, 10, isActive ? "#fff" : "#444");
-    }
-    // Arrow
-    const arrowX = read ? lx + 70 : rx - 70;
-    asciiAt(ctx, read ? "-->" : "<--", w / 2, h / 2, 12, "#888");
-    asciiAt(ctx, "swap()", w / 2, h / 2 + 70, 10, "#555");
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("PING-PONG", w / 2, h - 10);
-  },
-
-  // S09 — Bundles: record/replay ASCII
-  s09_bundles(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const phase = (now * 0.5) % 3;
-    const replaying = phase > 1.5;
-    const slots = ["[REC]", "[RP1]", "[RP2]"];
-    for (let i = 0; i < 3; i++) {
-      const x = w * 0.2 + i * w * 0.3;
-      const active = replaying || i === 0;
-      const box = active ? ["+------+", "| #### |", "+------+"] : ["+------+", "| ......", "+------+"];
-      ctx.font = "11px monospace"; ctx.textAlign = "center";
-      box.forEach((line, row) => asciiAt(ctx, line, x, h / 2 - 20 + row * 14, 11, active ? "#fff" : "#333"));
-      asciiAt(ctx, slots[i], x, h / 2 + 35, 10, active ? "#fff" : "#333");
-    }
-    ctx.fillStyle = "#888";
-    ctx.font = "10px monospace"; ctx.textAlign = "center";
-    ctx.fillText(replaying ? "bundle.replay()" : "bundle.record()", w / 2, 24);
-    ctx.fillStyle = "#555";
-    ctx.fillText("BUNDLES", w / 2, h - 10);
-  },
-
-  // S10 — Group claim: dynamic offset bars
-  s10_group_claim(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const count = 6;
-    const barW = w * 0.12;
-    const startX = (w - count * barW) / 2;
-    for (let i = 0; i < count; i++) {
-      const x = startX + i * barW;
-      const offset = Math.sin(now * 1.5 + i * 0.8) * 0.3 + 0.5;
-      const rows = Math.floor(offset * 8);
-      for (let r = 0; r < 8; r++) {
-        const char = r < rows ? "#" : ".";
-        const bright = r < rows ? 255 : 60;
-        asciiAt(ctx, char, x + barW / 2, h * 0.7 - r * 16, 12, `rgb(${bright},${bright},${bright})`);
-      }
-      asciiAt(ctx, `off:${(offset * 100).toFixed(0)}`, x + barW / 2, h * 0.7 + 20, 8, "#555");
-    }
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("GROUP CLAIM", w / 2, h - 10);
-  },
-
-  // S11 — Compute: ASCII particles
-  s11_compute(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const particles = 40;
-    for (let i = 0; i < particles; i++) {
-      const seed = i * 137.508;
-      const px = ((seed * 7.3 + now * 30 * (0.3 + (i % 5) * 0.12)) % w + w) % w;
-      const py = ((seed * 3.7 + now * 15 * (0.2 + (i % 3) * 0.1)) % h + h) % h;
-      const chars = ".*+#@";
-      const char = chars[i % chars.length];
-      asciiAt(ctx, char, px, py, 10, "#fff");
-    }
-    // Connection lines (ASCII)
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < 10; i++) {
-      const seed = i * 137.508;
-      const x1 = ((seed * 7.3 + now * 30 * (0.3 + (i % 5) * 0.12)) % w + w) % w;
-      const y1 = ((seed * 3.7 + now * 15 * (0.2 + (i % 3) * 0.1)) % h + h) % h;
-      const x2 = ((seed * 11.3 + now * 30 * (0.3 + ((i + 3) % 5) * 0.12)) % w + w) % w;
-      const y2 = ((seed * 5.1 + now * 15 * (0.2 + ((i + 2) % 3) * 0.1)) % h + h) % h;
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    }
-    ctx.fillStyle = "#555";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("COMPUTE", w / 2, h - 10);
-  },
-
-  // S12 — Resize: growing ASCII grid
-  s12_scheduling_resize(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const t = (now * 0.3) % 2;
-    const grow = t < 1 ? t : 1;
-    const gridSize = Math.floor(4 + grow * 4);
-    const cellW = Math.min(20, (w * 0.6) / gridSize);
-    const startX = w / 2 - (gridSize * cellW) / 2;
-    const startY = h / 2 - (gridSize * cellW) / 2;
-    for (let gy = 0; gy < gridSize; gy++) {
-      for (let gx = 0; gx < gridSize; gx++) {
-        const x = startX + gx * cellW + cellW / 2;
-        const y = startY + gy * cellW + cellW / 2;
-        asciiAt(ctx, "+", x, y, Math.min(cellW * 0.6, 10), "#555");
-      }
-    }
-    // Border
-    ctx.strokeStyle = "#555";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(startX - 4, startY - 4, gridSize * cellW + 8, gridSize * cellW + 8);
-    ctx.fillStyle = "#888";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText(`target.resize([${gridSize}, ${gridSize}])`, w / 2, startY + gridSize * cellW + 24);
-    ctx.fillStyle = "#555";
-    ctx.fillText("RESIZE", w / 2, h - 10);
-  },
-
-  // S13 — Headless: static pixel grid
-  s13_headless(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    const grid = 8;
-    const cell = 14;
-    const startX = cx - (grid * cell) / 2;
-    const startY = cy - (grid * cell) / 2;
-    for (let gy = 0; gy < grid; gy++) {
-      for (let gx = 0; gx < grid; gx++) {
-        const v = Math.sin(gx * 0.8 + gy * 0.6) * 0.5 + 0.5;
-        const charIdx = Math.floor(v * (CHARS.length - 1));
-        asciiAt(ctx, CHARS[charIdx], startX + gx * cell + cell / 2, startY + gy * cell + cell / 2, 10, "#fff");
-      }
-    }
-    ctx.strokeStyle = "#555";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(startX - 6, startY - 6, grid * cell + 12, grid * cell + 12);
-    ctx.fillStyle = "#888";
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    ctx.fillText("effect.draw({ target })", w / 2, cy + grid * cell / 2 + 24);
-    ctx.fillText("no frame loop -- one-shot render", w / 2, cy + grid * cell / 2 + 38);
-    ctx.fillStyle = "#555";
-    ctx.fillText("HEADLESS", w / 2, h - 10);
-  },
-
-  // ─── Agent Animation — ASCII ─────────────────────────────────────────────
-
-  cockpit(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    // ASCII orbiting rings
-    drawAsciiRing(ctx, cx, cy, 80, now, 0.4, "::::::::::::");
-    drawAsciiRing(ctx, cx, cy, 55, now, -0.6, ";;;;;;;;");
-    drawAsciiRing(ctx, cx, cy, 30, now, 0.8, "::::");
-    // Progress arc (ASCII)
-    const progress = (Math.sin(now * 0.5) + 1) / 2;
-    const arcChars = Math.floor(progress * 20);
-    const arc = "#".repeat(arcChars) + ".".repeat(20 - arcChars);
-    asciiAt(ctx, `[${arc}]`, cx, cy + 110, 10, "#fff");
-    asciiAt(ctx, `${Math.round(progress * 100)}%`, cx, cy + 126, 11, "#fff");
-    // Status
-    asciiAt(ctx, "agentAnimation()", cx, h - 18, 10, "#555");
-  },
-
-  dashboard(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const agents = [
-      { name: "planner", status: "working", progress: 0.72 },
-      { name: "researcher", status: "thinking", progress: 0.45 },
-      { name: "reviewer", status: "idle", progress: 0.1 },
-    ];
-    const cardW = w * 0.28;
-    const startX = (w - agents.length * cardW) / 2;
-    agents.forEach((a, i) => {
-      const x = startX + i * cardW + cardW / 2;
-      const y = h * 0.25;
-      const barLen = 12;
-      const filled = Math.floor(a.progress * barLen);
-      const bar = "#".repeat(filled) + ".".repeat(barLen - filled);
-      asciiAt(ctx, `+${"-".repeat(barLen + 2)}+`, x, y, 9, "#555");
-      asciiAt(ctx, `| ${a.name.padEnd(10)} |`, x, y + 14, 9, "#fff");
-      asciiAt(ctx, `| [${bar}] |`, x, y + 28, 9, "#fff");
-      asciiAt(ctx, `| ${a.status.padEnd(12)}|`, x, y + 42, 9, "#888");
-      asciiAt(ctx, `+${"-".repeat(barLen + 2)}+`, x, y + 56, 9, "#555");
-    });
-    asciiAt(ctx, "createAgentRegistry()", w / 2, h - 30, 9, "#555");
-    asciiAt(ctx, "DASHBOARD", w / 2, h - 10, 9, "#555");
-  },
-
-  replay(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    // Timeline
-    const lx = w * 0.1, rx = w * 0.9;
-    const cy = h * 0.5;
-    asciiAt(ctx, "<".padEnd(60, "-"), (lx + rx) / 2, cy, 10, "#555");
-    // Events
-    const nodes = [0.2, 0.45, 0.7];
-    const labels = ["*", "#", "@"];
-    nodes.forEach((t, i) => {
-      const x = lx + (rx - lx) * t;
-      asciiAt(ctx, labels[i], x, cy, 16, "#fff");
-      asciiAt(ctx, `evt_${i}`, x, cy + 20, 8, "#555");
-    });
-    // Scanning beam
-    const scanT = (now * 0.3) % 1;
-    const sx = lx + (rx - lx) * scanT;
-    asciiAt(ctx, "^", sx, cy - 16, 12, "#fff");
-    asciiAt(ctx, "recordAgentEvents()", w / 2, h * 0.2, 9, "#555");
-    asciiAt(ctx, "replayAgentEvents()", w / 2, h * 0.78, 9, "#555");
-    asciiAt(ctx, "REPLAY", w / 2, h - 10, 9, "#555");
-  },
-
-  transmission(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    const angle = now * 0.3;
-    // ASCII glass cube
-    const s = 30;
-    const skew = Math.sin(now * 0.3) * 5;
-    const cube = [
-      "+--------+",
-      "|\\       |\\",
-      "| \\      | \\",
-      "|  \\     |  \\",
-      "+---\\----+   |",
-      "|    |   |   |",
-      "|    +---|---+",
-      "|   /    |  /",
-      "|  /     | /",
-      "+--------+/",
-    ];
-    ctx.font = "9px monospace"; ctx.textAlign = "center";
-    cube.forEach((line, i) => asciiAt(ctx, line, cx + Math.sin(now + i * 0.2) * 3, cy - 50 + i * 11, 9, "#fff"));
-    // IOR
-    const ior = 1.5 + Math.sin(now * 0.2) * 0.1;
-    asciiAt(ctx, `IOR: ${ior.toFixed(2)}`, w / 2, h - 28, 9, "#888");
-    asciiAt(ctx, "TRANSMISSION", w / 2, h - 10, 9, "#555");
-  },
-
-  gallery(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const names = ["anime", "enterprise", "psychedelic", "calm", "celebration", "glitch", "minimal", "cosmic"];
-    const patterns = [":::", "---", "***", "~~~", "+++", "###", "...", "@@@"];
-    const cols = 4, rows = 2;
-    const cw = w / cols, ch = (h - 20) / rows;
-    for (let i = 0; i < 8; i++) {
-      const col = i % cols, row = Math.floor(i / cols);
-      const x = col * cw + cw / 2;
-      const y = row * ch + ch / 2;
-      const pulse = Math.sin(now * 1.5 + i) > 0;
-      asciiAt(ctx, `[${patterns[i]}]`, x, y - 8, 10, pulse ? "#fff" : "#555");
-      asciiAt(ctx, names[i], x, y + 10, 9, "#888");
-    }
-    asciiAt(ctx, "GALLERY", w / 2, h - 8, 9, "#555");
-  },
-
-  fluid(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cols = 16, rows = 10;
-    const cw = w / cols, ch = h / rows;
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const angle = Math.sin(gx * 0.5 + now) * Math.cos(gy * 0.4 + now * 0.7) * Math.PI;
-        const dir = Math.floor(((angle / Math.PI + 1) / 2) * 4);
-        const dirs = ["/", "-", "\\", "|"];
-        asciiAt(ctx, dirs[dir], gx * cw + cw / 2, gy * ch + ch / 2, 12, "#fff");
-      }
-    }
-    asciiAt(ctx, "FLUID", w / 2, h - 10, 9, "#555");
-  },
-
-  lava(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cols = 30, rows = 18;
-    const cw = w / cols, ch = h / rows;
-    for (let gy = 0; gy < rows; gy++) {
-      for (let gx = 0; gx < cols; gx++) {
-        const n = Math.sin(gx * 0.3 + now * 0.8) * Math.cos(gy * 0.3 + now * 0.5);
-        const v = (n + 1) / 2;
-        const charIdx = Math.floor(v * (CHARS.length - 1));
-        asciiAt(ctx, CHARS[charIdx], gx * cw + cw / 2, gy * ch + ch / 2, Math.min(cw, ch) * 0.6, "#fff");
-      }
-    }
-    asciiAt(ctx, "LAVA TSL", w / 2, h - 10, 9, "#555");
-  },
-
-  agent_animation(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    drawAsciiRing(ctx, cx, cy, 70, now, 0.3, "::::::::::::::");
-    drawAsciiRing(ctx, cx, cy, 45, now, -0.5, ":::::::::");
-    const progress = (Math.sin(now * 0.5) + 1) / 2;
-    const arcChars = Math.floor(progress * 16);
-    const arc = "#".repeat(arcChars) + ".".repeat(16 - arcChars);
-    asciiAt(ctx, `[${arc}]`, cx, cy + 100, 10, "#fff");
-    asciiAt(ctx, "agentAnimation()", cx, h - 12, 9, "#555");
-  },
-
-  mesh_edit(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    const count = 10;
-    const pts = [];
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2 + now * 0.3;
-      const r = 50 + Math.sin(now + i * 0.7) * 8;
-      pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
-    }
-    // Edges
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i < count; i++) {
-      for (let j = i + 2; j < count; j++) {
-        if (j - i === count - 1) continue;
-        ctx.beginPath();
-        ctx.moveTo(pts[i][0], pts[i][1]);
-        ctx.lineTo(pts[j][0], pts[j][1]);
-        ctx.stroke();
-      }
-    }
-    // Vertices
-    pts.forEach((p, i) => asciiAt(ctx, "@", p[0], p[1], 8, "#888"));
-    // Selected
-    const sel = Math.floor((now * 2) % count);
-    asciiAt(ctx, "*", pts[sel][0], pts[sel][1], 14, "#fff");
-    asciiAt(ctx, `vertex[${sel}] selected`, w / 2, h - 24, 9, "#888");
-    asciiAt(ctx, "MESH EDIT", w / 2, h - 10, 9, "#555");
-  },
-
-  dom_mount(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h / 2;
-    // Canvas element
-    const cw = 20, ch = 10;
-    const startX = cx - cw * 4;
-    const startY = cy - ch * 7;
-    for (let y = 0; y < ch; y++) {
-      for (let x = 0; x < cw; x++) {
-        const char = (y === 0 || y === ch - 1 || x === 0 || x === cw - 1) ? "+" : ".";
-        asciiAt(ctx, char, startX + x * 8, startY + y * 14, 9, "#555");
-      }
-    }
-    // Agent visual inside
-    asciiAt(ctx, "@", cx, cy, 16, "#fff");
-    asciiAt(ctx, "<canvas>", cx, cy + ch * 7 + 10, 9, "#555");
-    // Controller
-    asciiAt(ctx, "controller.set()", cx + cw * 4 + 20, cy, 8, "#888");
-    asciiAt(ctx, "DOM MOUNT", w / 2, h - 10, 9, "#555");
-  },
-
-  state_tools(ctx, now) {
-    const w = ctx.canvas.width, h = ctx.canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, w, h);
-    const boxes = [
-      { label: "store", x: 0.12 },
-      { label: "registry", x: 0.37 },
-      { label: "recorder", x: 0.62 },
-      { label: "replay", x: 0.87 },
-    ];
-    const cy = h * 0.4;
-    boxes.forEach((b, i) => {
-      const x = w * b.x;
-      const pulse = Math.sin(now * 1.5 + i * 1.2) > 0;
-      asciiAt(ctx, `[${b.label}]`, x, cy, 10, pulse ? "#fff" : "#555");
-      if (i < boxes.length - 1) {
-        asciiAt(ctx, "-->", x + 50, cy, 10, "#555");
-      }
-    });
-    asciiAt(ctx, "STATE TOOLS", w / 2, h - 10, 9, "#555");
-  },
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(status.toUpperCase(), cx, cy + 4);
+  ctx.textAlign = 'start';
 };
 
-// ─── Vue 3 App ──────────────────────────────────────────────────────────────
-const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+const asciiWave = (ctx, w, h, t, pattern) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const chars = pattern || '·.:|=+*#%@';
+  const cols = 40;
+  const rows = 18;
+  const cellW = w / cols;
+  const cellH = h / rows;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const val = Math.sin(x * 0.3 + t * 2 + y * 0.2) * 0.5 + 0.5;
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.1 + val * 0.5})`;
+      ctx.font = `${Math.floor(cellH * 0.8)}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 2, y * cellH + cellH * 0.8);
+    }
+  }
+};
 
-const examples = [
-  { id: "s02_fullscreen", title: "Minimal fullscreen effect", category: "GPU Core", tags: "gpu", description: "The smallest GPU fragment shader through effect(). Time-based gradient.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s02-fullscreen", code: `import { init, effect, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nconst colorTarget = target(gpu, { size: [8, 8], format: "rgba8unorm" });\nconst wave = effect(gpu, WGSL, { label: "wave", set: { speed: 2 } });\nwave.set({ time: Math.PI / 4 });\nframe(gpu, (f) => f.pass({ target: colorTarget }, (p) => p.draw(wave)));` },
-  { id: "s03_sharing", title: "Shared bind groups", category: "GPU Core", tags: "gpu", description: "Two draws share one camera Uniform while each keeps its own params.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s03-sharing", code: `import { init, Uniform, draw, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nconst camera = new Uniform(gpu.device, { size: 16, label: "camera" });\ncamera.write(new Float32Array([1, 0, 0, 0]));\nconst cube = draw(gpu, { shader: CUBE, label: "cube" });\nconst floor = draw(gpu, { shader: FLOOR, label: "floor" });\ncube.set({ camera, params: { color: [1, 0, 0, 1] } });\nfloor.set({ camera, params: { color: [0, 1, 0, 1] } });\nframe(gpu, (f) => f.pass({ target, clear: [0, 0, 0, 1] }, (p) => { p.draw(cube); p.draw(floor); }));` },
-  { id: "s04_shared_uniforms", title: "Cross-effect shared uniforms", category: "GPU Core", tags: "gpu", description: "Multiple effects consume the same uniforms() group. Changes propagate atomically.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s04-shared-uniforms", code: `import { init, effect, frame, target, uniforms } from "aigpu/node";\n\nconst gpu = await init();\nconst globals = uniforms(gpu, { time: 0, resolution: [800, 600] });\nconst wave = effect(gpu, waveWGSL, { bindings: { globals } });\nconst tint = effect(gpu, tintWGSL, { bindings: { globals } });\nframe(gpu, (f) => { globals.set({ time: f.time }); f.pass(out, wave, tint); });` },
-  { id: "s05_fixits", title: "Developer fix-it errors", category: "GPU Core", tags: "gpu", description: "Actionable error messages for missing bindings and ownership violations.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s05-fixits", code: `import { init, effect, target } from "aigpu/mock";\n\nconst gpu = await init();\nconst vis = effect(gpu, shader);\nvis.draw({ target: t }); // Throws: "missing binding: set(color) before draw()"` },
-  { id: "s06_scene", title: "3D scene with camera and lights", category: "GPU Core", tags: "gpu", description: "Perspective camera, orbit rotation, box geometry, per-pixel lighting.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s06-scene", code: `import { init, draw, frame, geometry, target } from "aigpu/node";\nimport { box, orbit, perspectiveCamera } from "aigpu/scene";\n\nconst gpu = await init();\nconst cam = perspectiveCamera({ fov: 45, aspect: 1, position: [2, 2, 3], target: [0, 0, 0] });\nconst geo = geometry(gpu, box({ size: 1 }));\ncube.set({ camera: { viewProjection: cam.viewProjection }, model: { model: orbit(0) }, light: { direction: [-1, -1, -1], intensity: 1 } });` },
-  { id: "s07_hdr_post", title: "HDR render targets + post", category: "GPU Core", tags: "gpu", description: "Two-pass pipeline: render to rgba16float, composite via post effect.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s07-hdr-post", code: `import { init, effect, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nconst sceneTarget = target(gpu, { size: [800, 600], format: "rgba16float" });\nconst post = effect(gpu, postWGSL);\nframe(gpu, (f) => { f.pass(sceneTarget, sceneEffect); f.pass(out, post, { src: sceneTarget }); });` },
-  { id: "s08_ping_pong", title: "Ping-pong double buffering", category: "GPU Core", tags: "gpu", description: "pingPong() alternates read/write textures for iterative GPU effects.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s08-ping-pong", code: `import { init, effect, frame, pingPong } from "aigpu/node";\n\nconst gpu = await init();\nconst buf = pingPong(gpu, 8, 8, { format: "rgba8unorm" });\nconst fill = effect(gpu, FILL, { label: "fill" });\nconst copy = effect(gpu, COPY, { label: "copy" });\nframe(gpu, (f) => f.pass({ target: buf.write }, (p) => p.draw(fill)));\nbuf.swap();\nframe(gpu, (f) => f.pass({ target: buf.write }, (p) => { copy.set({ src: buf.read, texel: buf.read.texelSize }); p.draw(copy); }));` },
-  { id: "s09_bundles", title: "Render bundles", category: "GPU Core", tags: "gpu", description: "Pre-record draw commands into a bundle for replay. Uniform-driven.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s09-bundles", code: `import { init, bundle, effect, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nconst floor = bundle(gpu, (rec) => { rec.setPipeline(floorPipeline); rec.draw(6); });\nframe(gpu, (f) => { f.replay(floor); f.pass(out, overlay); });` },
-  { id: "s10_group_claim", title: "Raw bind group claim", category: "GPU Core", tags: "gpu", description: "Bypass set(): hand-craft a GPUBindGroup with dynamic offsets.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s10-group-claim", code: `import { init, draw, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nconst bg = gpu.device.createBindGroup({ ... });\nframe(gpu, (f) => { const d = draw(gpu, { shader, geometry }); d.group(0, bg); d.draw({ target: t, dynamicOffsets: [0, 256] }); });` },
-  { id: "s11_compute", title: "GPU compute shader", category: "GPU Core", tags: "gpu", description: "Dispatch a compute kernel with storage buffers. Physics sim.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s11-compute", code: `import { init, compute } from "aigpu/node";\n\nconst gpu = await init();\nconst src = gpu.device.createBuffer({ size: 16, usage: ["storage", "copy_dst", "copy_src"] });\nconst dst = gpu.device.createBuffer({ size: 16, usage: ["storage", "copy_dst", "copy_src"] });\nsrc.write(new Float32Array([1, 2, 3, 4]));\nconst sim = compute(gpu, SIM, { label: "sim" });\nsim.set({ dt: 0.5, src, dst });\nsim.dispatch(1);` },
-  { id: "s12_scheduling_resize", title: "Runtime target resize", category: "GPU Core", tags: "gpu", description: "target.resize() reallocates the texture. texelSize auto-updates.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s12-scheduling-resize", code: `import { init, effect, frame, target } from "aigpu/node";\n\nconst gpu = await init();\nlet t = target(gpu, { size: [4, 4], format: "rgba8unorm" });\nconst vis = effect(gpu, shader);\nframe(gpu, (f) => { f.pass(t, vis); if (f.frameCount === 60) t.resize([8, 8]); });` },
-  { id: "s13_headless", title: "Headless one-shot render", category: "GPU Core", tags: "gpu", description: "effect.draw() without frame loop. One-shot render for CI/tests.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/by-example-s13-headless", code: `import { init, effect, target } from "aigpu/node";\n\nconst gpu = await init();\nconst colorTarget = target(gpu, { size: [8, 8], format: "rgba8unorm" });\nconst p = effect(gpu, GRADIENT, { label: "gradient" });\np.set({ time: 1.25, speed: 1 });\np.draw({ target: colorTarget });` },
+const asciiWireCube = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const s = 70;
+  const cos = Math.cos, sin = Math.sin;
+  const ry = t * 0.4, rx = t * 0.25;
+  const verts = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]].map(([x,y,z]) => {
+    let y1 = y * cos(rx) - z * sin(rx);
+    let z1 = y * sin(rx) + z * cos(rx);
+    let x1 = x * cos(ry) - z1 * sin(ry);
+    let z2 = x * sin(ry) + z1 * cos(ry);
+    const scale = 2 / (4 + z2);
+    return [cx + x1 * s * scale, cy + y1 * s * scale];
+  });
+  const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  edges.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(verts[a][0], verts[a][1]);
+    ctx.lineTo(verts[b][0], verts[b][1]);
+    ctx.stroke();
+  });
+  verts.forEach(([x, y], i) => {
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px monospace';
+    ctx.fillText('+', x - 3, y + 4);
+  });
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.font = '10px monospace';
+  ctx.fillText('3D WIREFRAME', 10, h - 10);
+};
 
-  { id: "cockpit", title: "Agent cockpit", category: "Agent", tags: "agents", description: "Framework-free agentAnimation(). Status events drive a live GPU visual.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/agent-cockpit", code: `import { agentAnimation, clock, frameLoop, init, surface } from "aigpu";\n\nconst gpu = await init();\nconst visual = agentAnimation(gpu, { initial: { status: "thinking" } });\nconst out = surface(gpu, document.querySelector("canvas"));\nconst time = clock(gpu);\nframeLoop(gpu, (f) => { visual.tick(time.time); f.pass(out, visual.effect); });\nvisual.set({ status: "working", progress: 0.6 });` },
-  { id: "dashboard", title: "Multi-agent ops dashboard", category: "Agent", tags: "agents", description: "createAgentRegistry() manages multiple agents with stable cards.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/agent-ops-dashboard", code: `import { createAgentRegistry } from "aigpu/tools";\n\nconst registry = createAgentRegistry();\nregistry.ensure("planner", { status: "idle", progress: 0, activity: 0 });\nregistry.ensure("researcher", { status: "idle", progress: 0, activity: 0 });\nconst cards = registry.ids.map((id) => {\n  const s = registry.get(id).snapshot.state;\n  return { id, label: id, status: s.status, progress: s.progress };\n});\nregistry.subscribe((snapshot, event) => render(snapshot.agents));` },
-  { id: "replay", title: "Event recording and replay", category: "Agent", tags: "agents", description: "recordAgentEvents() captures, replayAgentEvents() replays at speed.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/event-replay", code: `import { createAgentStore, recordAgentEvents, replayAgentEvents } from "aigpu/tools";\n\nconst store = createAgentStore({ status: "thinking" });\nconst recorder = recordAgentEvents((listener) =>\n  store.subscribe((_snapshot, event) => listener(event)), { now: () => 0 });\nstore.set({ status: "working", progress: 0.4 });\nstore.set({ status: "success", progress: 1 });\nrecorder.stop();\nconst replay = replayAgentEvents(recorder.events, deliver, { speed: 4 });\nreplay.play();` },
-  { id: "agent_animation", title: "Built-in agent animation shader", category: "Agent", tags: "agents gpu", description: "Core WGSL agent status shader. 6 statuses, rings, progress arc.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/agent-cockpit", code: `import { agentAnimation, init, surface, frameLoop } from "aigpu";\n\nconst gpu = await init();\nconst out = surface(gpu, canvas);\nconst agent = agentAnimation(gpu, { initial: { status: "idle" }, colors: { working: [114, 233, 255] } });\nframeLoop(gpu, (f) => f.pass(out, agent));\nagent.set({ status: "working", progress: 0.6 });` },
-  { id: "state_tools", title: "Agent state tools", category: "Agent", tags: "agents", description: "createAgentStore, createAgentRegistry, record, replay. Pure state.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/event-replay", code: `import { createAgentStore, createAgentRegistry } from "aigpu/tools";\n\nconst store = createAgentStore({ status: "idle" });\nstore.set({ status: "working", progress: 0.5 });\nstore.dispatch({ type: "progress", patch: { progress: 0.8 } });\nstore.subscribe((snap, evt) => console.log(snap, evt));\nconst reg = createAgentRegistry();\nreg.ensure("agent-1", { status: "thinking" });` },
+const asciiGrid = (ctx, w, h, t, opts = {}) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cols = opts.cols || 32;
+  const rows = opts.rows || 16;
+  const cellW = w / cols;
+  const cellH = h / rows;
+  const chars = opts.chars || '·.:*#@';
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const dist = Math.sqrt((x - cols / 2) ** 2 + (y - rows / 2) ** 2);
+      const val = Math.sin(dist * 0.4 - t * 2) * 0.5 + 0.5;
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.08 + val * 0.45})`;
+      ctx.font = `${Math.floor(cellH * 0.75)}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 2, y * cellH + cellH * 0.75);
+    }
+  }
+};
 
-  { id: "transmission", title: "Glass transmission shader", category: "Advanced", tags: "gpu", description: "Physically-based glass with IOR, roughness, dispersion controls.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/transmission", code: `import { surface, type Gpu, type Surface } from "aigpu";\nimport { createScene, renderScene, DEFAULT_CONTROLS } from "./scene";\n\nfunction createRenderer({ canvas }) {\n  let gpu: Gpu, output: Surface, scene: Scene;\n  const controls = { ...DEFAULT_CONTROLS };\n  output = surface(gpu, canvas);\n  scene = createScene(gpu, controls);\n  function frame() { renderScene(gpu, output, scene, controls); requestAnimationFrame(frame); }\n  requestAnimationFrame(frame);\n}` },
-  { id: "fluid", title: "GPU fluid simulation", category: "Advanced", tags: "gpu", description: "WGSL compute: divergence, pressure projection, velocity advection.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/fluid", code: `import { compute, storage, frame, init } from "aigpu/node";\n\nconst gpu = await init();\nconst grid = storage(gpu, gridData);\nconst divergenceJob = compute(gpu, divergenceWGSL, { bindings: { grid } });\nconst projectJob = compute(gpu, projectWGSL, { bindings: { grid } });\nframe(gpu, (f) => { f.run(divergenceJob); f.run(projectJob); });` },
-  { id: "lava", title: "Three.js TSL bridge", category: "Advanced", tags: "gpu", description: "Import WGSL via @aigpu/wgsl, connect to three.js nodes.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/three-tsl", code: `import * as THREE from "three/webgpu";\nimport { wgsl, wgslFn } from "three/tsl";\nimport lavaWGSL from "./lava.wgsl";\n\nconst lavaGlow = wgslFn(lavaWGSL, "lavaGlow");\nconst crustHeight = wgslFn(lavaWGSL, "crustHeight");\nconst material = new THREE.MeshPhysicalNodeMaterial();\nmaterial.emissiveNode = lavaGlow({ time, uv });\nmaterial.displacementNode = crustHeight({ time, uv });` },
-  { id: "mesh_edit", title: "Mesh editing operators", category: "Advanced", tags: "gpu", description: "Half-edge mesh: extrude, bevel, subdivide, bridge, dissolve.", source: "https://github.com/hautlys/AIGpu/tree/main/packages/render/src/edit", code: `import { toEditable, extrude, bevel, recomputeNormals } from "@aigpu/render/edit";\nimport { geometry, box } from "aigpu/scene";\n\nconst geo = geometry(gpu, box({ size: 1 }));\nconst mesh = toEditable(geo);\nextrude(mesh, { selection: topFace, distance: 0.5 });\nbevel(mesh, { selection: topEdges, width: 0.1 });\nrecomputeNormals(mesh);` },
-  { id: "gallery", title: "Visual gallery (8 recipes)", category: "Agent", tags: "agents gpu", description: "8 WGSL recipes: anime, enterprise, psychedelic, calm, etc.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/visual-gallery", code: `import { compile } from "@aigpu/wgsl";\nimport { readFile } from "node:fs/promises";\n\nconst recipe = await readFile("./shaders/anime-hologram.wgsl", "utf-8");\nconst shader = compile(recipe);\nconst agent = agentAnimation(gpu, { shader });\nagent.set({ status: "success", progress: 1.0 });` },
-  { id: "dom_mount", title: "DOM canvas mount", category: "Framework", tags: "ui", description: "mountAgentCanvas() -- framework-free DOM mount.", source: "https://github.com/hautlys/AIGpu/tree/main/examples/framework-integrations", code: `import { mountAgentCanvasSelector } from "aigpu";\n\nconst controller = mountAgentCanvasSelector("#agent-canvas", { initial: { status: "thinking" } });\ncontroller.set({ progress: 0.6 });\ncontroller.destroy();` },
-];
+const asciiParticles = (ctx, w, h, t, opts = {}) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const count = opts.count || 80;
+  const chars = opts.chars || '*+.#@';
+  for (let i = 0; i < count; i++) {
+    const seed = i * 137.5;
+    const x = ((seed * 7.3 + Math.sin(t + i) * 40) % w + w) % w;
+    const y = ((seed * 11.1 + Math.cos(t * 0.7 + i) * 30) % h + h) % h;
+    const ci = i % chars.length;
+    const alpha = 0.15 + Math.abs(Math.sin(t + i * 0.5)) * 0.4;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.font = `${10 + (i % 4)}px monospace`;
+    ctx.fillText(chars[ci], x, y);
+  }
+};
 
-const categories = [
-  { id: "gpu", label: "GPU" },
-  { id: "agents", label: "Agents" },
-  { id: "ui", label: "UI" },
-];
+const asciiBarChart = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const bars = 16;
+  const barW = (w - 60) / bars;
+  ctx.font = '10px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillText('GPU utilization // real-time', 10, 16);
+  for (let i = 0; i < bars; i++) {
+    const val = (Math.sin(t * 2 + i * 0.6) * 0.5 + 0.5) * 0.8 + 0.1;
+    const barH = val * (h - 40);
+    const chars = '█▓▒░';
+    const ci = Math.floor(val * (chars.length - 1));
+    for (let row = 0; row < Math.floor(barH / 12); row++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + (row / (barH / 12)) * 0.4})`;
+      ctx.fillText(chars[ci], 30 + i * barW, h - 20 - row * 12);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillText(String(i + 1).padStart(2), 30 + i * barW, h - 6);
+  }
+};
 
-const frameworks = [
-  { name: "HTML / JS", desc: "Mount a canvas directly. No component runtime.", code: 'import { mountAgentCanvas } from "aigpu";\nconst controller = mountAgentCanvas(canvas, { initial: { status: "thinking" } });\ncontroller.set({ progress: 0.6 });' },
-  { name: "React", desc: "useAgentCanvas hook. Core never imports React.", code: 'import { useAgentCanvas } from "@aigpu/react";\nconst { canvasRef, mounted } = useAgentCanvas({\n  label: "react-agent",\n  initial: { status: "thinking", activity: 0.7 },\n  patch: { status: "working", progress, activity: 0.9 },\n});' },
-  { name: "Vue 3", desc: "Composable with refs and watchers. Auto cleanup.", code: 'import { useAgentCanvas } from "@aigpu/vue";\nconst { canvas, controller, mounted } = useAgentCanvas({\n  label: "vue-agent",\n  initial: { status: "thinking", activity: 0.7 },\n});\nwatch([status, progress], () => controller.value?.set({ status: status.value, progress: progress.value }));' },
-  { name: "Svelte", desc: "Standard action contract. No Svelte runtime import.", code: 'import { agentCanvas } from "@aigpu/svelte";\n$: options = {\n  initial: { status: "thinking" as const, activity: 0.7 },\n  patch: { status, progress, activity: status === "working" ? 0.9 : 0.25 },\n};\n<canvas use:agentCanvas={options} aria-label="Agent" />' },
-];
+const asciiSpiral = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const chars = '·.:;|=+*#%@';
+  for (let i = 0; i < 300; i++) {
+    const angle = i * 0.15 + t;
+    const r = i * 0.6;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    if (x < 0 || x > w || y < 0 || y > h) continue;
+    const ci = i % chars.length;
+    const alpha = Math.max(0, 0.6 - i * 0.002);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.font = `${10 + (i % 4)}px monospace`;
+    ctx.fillText(chars[ci], x, y);
+  }
+};
+
+const asciiNoise = (ctx, w, h, t, opts = {}) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cellSize = opts.cellSize || 10;
+  const cols = Math.ceil(w / cellSize);
+  const rows = Math.ceil(h / cellSize);
+  const chars = opts.chars || ' ·∶: Noticed░▒▓█';
+  const seed = opts.seed || 0;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const n = Math.sin(x * 0.1 + seed) * Math.cos(y * 0.1 + t * 0.5) * 0.5 + 0.5;
+      const ci = Math.floor(n * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + n * 0.5})`;
+      ctx.font = `${cellSize - 1}px monospace`;
+      ctx.fillText(chars[ci], x * cellSize, y * cellSize + cellSize - 1);
+    }
+  }
+};
+
+const asciiEqualizer = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const bands = 24;
+  const bandW = (w - 40) / bands;
+  const chars = '·:*+#@';
+  for (let i = 0; i < bands; i++) {
+    const val = Math.abs(Math.sin(t * 1.5 + i * 0.5)) * 0.9 + 0.1;
+    const barH = val * (h - 30);
+    for (let row = 0; row < Math.floor(barH / 10); row++) {
+      const ci = Math.min(chars.length - 1, Math.floor((row / (barH / 10)) * chars.length));
+      ctx.fillStyle = `rgba(255,255,255,${0.1 + (row / (barH / 10)) * 0.45})`;
+      ctx.font = '10px monospace';
+      ctx.fillText(chars[ci], 20 + i * bandW, h - 16 - row * 10);
+    }
+  }
+};
+
+const asciiHeatmap = (ctx, w, h, t, opts = {}) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cellW = 8, cellH = 12;
+  const cols = Math.ceil(w / cellW);
+  const rows = Math.ceil(h / cellH);
+  const chars = ' ··::--==++**##@@';
+  const freq = opts.freq || 0.12;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const val = Math.sin(x * freq + t * 0.8) * Math.cos(y * freq + t * 0.6) * 0.5 + 0.5;
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + val * 0.5})`;
+      ctx.font = `${cellH - 2}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 1, y * cellH + cellH - 2);
+    }
+  }
+};
+
+const asciiMatrix = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cols = 30;
+  const cellW = w / cols;
+  const chars = '01';
+  const drops = Array.from({ length: cols }, (_, i) => (i * 7 + 3) % 20);
+  ctx.font = '12px monospace';
+  for (let i = 0; i < cols; i++) {
+    const y = (drops[i] + t * 2) % (h / 12);
+    for (let j = 0; j < 8; j++) {
+      const charY = y * 12 - j * 12;
+      if (charY < 0 || charY > h) continue;
+      const alpha = j === 0 ? 0.8 : Math.max(0.05, 0.5 - j * 0.06);
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      const ci = (i * 3 + j + Math.floor(t * 3)) % chars.length;
+      ctx.fillText(chars[ci], i * cellW + 2, charY);
+    }
+  }
+};
+
+const asciiFire = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cellW = 8, cellH = 10;
+  const cols = Math.ceil(w / cellW);
+  const rows = Math.ceil(h / cellH);
+  const chars = ' .,:;i1tfLCG08#';
+  for (let x = 0; x < cols; x++) {
+    for (let y = 0; y < rows; y++) {
+      const normalY = y / rows;
+      const base = Math.sin(x * 0.2 + t) * 0.3 + 0.5;
+      const heat = Math.max(0, base - normalY * 0.7 + Math.sin(x * 0.5 + y * 0.3 + t * 2) * 0.2);
+      const ci = Math.floor(heat * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${heat * 0.6})`;
+      ctx.font = `${cellH - 1}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 1, y * cellH + cellH - 2);
+    }
+  }
+};
+
+const asciiRadar = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const rings = 5;
+  const chars = '·:.:=+*#%@';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  for (let r = 1; r <= rings; r++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 25, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  for (let a = 0; a < 8; a++) {
+    const angle = (a / 8) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * rings * 25, cy + Math.sin(angle) * rings * 25);
+    ctx.stroke();
+  }
+  const sweepAngle = t * 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(sweepAngle) * rings * 25, cy + Math.sin(sweepAngle) * rings * 25);
+  ctx.stroke();
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 + t * 0.3;
+    const r = 20 + Math.abs(Math.sin(i * 2.3 + t)) * 80;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    const ci = i % chars.length;
+    const alpha = Math.abs(Math.sin(sweepAngle - angle)) < 0.3 ? 0.9 : 0.15;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.font = '11px monospace';
+    ctx.fillText(chars[ci], x, y);
+  }
+};
+
+const asciiWaveform = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const mid = h / 2;
+  const chars = '·:|=+*#';
+  const points = 80;
+  for (let layer = 0; layer < 3; layer++) {
+    for (let i = 0; i < points; i++) {
+      const x = (i / points) * w;
+      const val = Math.sin(i * 0.1 + t * (2 + layer * 0.5) + layer) * (20 + layer * 15);
+      const y = mid + val;
+      const ci = Math.abs(Math.floor(val / 5)) % chars.length;
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + layer * 0.15})`;
+      ctx.font = '10px monospace';
+      ctx.fillText(chars[ci], x, y);
+    }
+  }
+};
+
+const asciiSine = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const mid = h / 2;
+  const chars = '·:-=+*#%@';
+  for (let i = 0; i < 200; i++) {
+    const x = (i / 200) * w;
+    const val = Math.sin(i * 0.06 + t * 2) * (h * 0.35);
+    const y = mid + val;
+    const ci = Math.floor((Math.abs(val) / (h * 0.35)) * (chars.length - 1));
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.abs(Math.sin(i * 0.06 + t * 2)) * 0.4})`;
+    ctx.font = '11px monospace';
+    ctx.fillText(chars[ci], x, y);
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.font = '10px monospace';
+  ctx.fillText(`freq: ${(1 + Math.sin(t * 0.3) * 0.5).toFixed(2)} Hz`, 10, 16);
+};
+
+/* ==================== CANVAS MAP ==================== */
+
+const drawCanvas = (canvas, rendererId, time, state) => {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  if (!ctx) return;
+  const t = time * 0.001;
+  const renderers = {
+    hero: () => asciiRings(ctx, w, h, t, state.status),
+    playground: () => asciiWave(ctx, w, h, t, ':;|=+*#%@'),
+    s02_fullscreen: () => asciiWave(ctx, w, h, t, '.:;-=+*#%@'),
+    s03_sharing: () => asciiWireCube(ctx, w, h, t),
+    s04_shared_uniforms: () => asciiWave(ctx, w, h, t, '._-=+*#'),
+    s05_fixits: () => asciiGrid(ctx, w, h, t, { chars: '!!..::##' }),
+    s06_scene: () => asciiGrid(ctx, w, h, t, { cols: 20, rows: 12, chars: '@*+#=.-' }),
+    s07_hdr_post: () => asciiHeatmap(ctx, w, h, t),
+    s08_ping_pong: () => asciiBarChart(ctx, w, h, t),
+    s09_bundles: () => asciiGrid(ctx, w, h, t, { cols: 24, rows: 10, chars: '[]{}()' }),
+    s10_group_claim: () => asciiSpiral(ctx, w, h, t),
+    s11_compute: () => asciiParticles(ctx, w, h, t, { count: 100, chars: '*+#@' }),
+    s12_scheduling_resize: () => asciiMatrix(ctx, w, h, t),
+    s13_headless: () => asciiNoise(ctx, w, h, t, { cellSize: 10, seed: 42 }),
+    s14_raymarching: () => asciiFire(ctx, w, h, t),
+    s15_noise_fields: () => asciiNoise(ctx, w, h, t, { cellSize: 7, seed: 0, chars: ' ·∶░▒▓█' }),
+    s16_particle_system: () => asciiParticles(ctx, w, h, t, { count: 150, chars: '.·:*+@' }),
+    s17_volumetric: () => asciiHeatmap(ctx, w, h, t, { freq: 0.08 }),
+    s18_post_process: () => asciiEqualizer(ctx, w, h, t),
+    s19_domain_warping: () => asciiNoise(ctx, w, h, t, { cellSize: 6, seed: 7, chars: '·:;i1tfLCG08#' }),
+    s20_texture_gen: () => asciiSine(ctx, w, h, t),
+    s21_edge_detect: () => asciiRadar(ctx, w, h, t),
+    s22_color_palette: () => asciiWaveform(ctx, w, h, t),
+    cockpit: () => asciiRings(ctx, w, h, t, state.status),
+    dashboard: () => asciiBarChart(ctx, w, h, t),
+    replay: () => asciiWave(ctx, w, h, t, '<=>[]|/\\'),
+    agent_animation: () => asciiParticles(ctx, w, h, t, { count: 120 }),
+    state_tools: () => asciiGrid(ctx, w, h, t, { cols: 20, rows: 8, chars: '+-|=' }),
+    transmission: () => asciiWireCube(ctx, w, h, t),
+    fluid: () => asciiFire(ctx, w, h, t),
+    lava: () => asciiNoise(ctx, w, h, t, { cellSize: 5, chars: '·:.:;i1tfLCG08#' }),
+    gallery: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 8, chars: '::--**##' }),
+    mesh_edit: () => asciiRadar(ctx, w, h, t),
+    dom_mount: () => asciiWave(ctx, w, h, t, '+-:.'),
+    fw_vue: () => asciiRings(ctx, w, h, t, 'working'),
+    fw_react: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 6, chars: '><' }),
+    fw_svelte: () => asciiWave(ctx, w, h, t, '~/\\'),
+    fw_purejs: () => asciiParticles(ctx, w, h, t, { count: 60, chars: 'o*' }),
+  };
+  const renderer = renderers[rendererId];
+  if (renderer) renderer();
+};
+
+/* ==================== APP ==================== */
 
 createApp({
   setup() {
-    const filter = ref("all");
-    const search = ref("");
-    const status = ref("working");
-    const progress = ref(72);
-    const activity = ref(90);
-    const eventLog = ref('{ status: "working", progress: 0.72 }');
+    const status = ref('working');
+    const progress = ref(64);
+    const activity = ref(42);
+    const filter = ref('all');
+    const search = ref('');
+    const eventLog = ref('// waiting for events...');
+    const modalOpen = ref(false);
+    const modalType = ref('');
+    const modalExample = ref(null);
+    const modalFramework = ref(null);
 
-    function examplesByCategory(cat) {
-      return examples.filter((e) => e.tags.includes(cat));
-    }
+    const categories = [
+      { id: 'gpu_core', label: 'GPU Core' },
+      { id: 'agent', label: 'Agent' },
+      { id: 'advanced', label: 'Advanced' },
+      { id: 'gpu_extra', label: 'GPU Extras' },
+    ];
+
+    const examples = ref([
+      { id: 's02_fullscreen', title: 's02 — fullscreen triangle', category: 'gpu_core', tags: 'fullscreen triangle wgsl', description: 'One triangle. No vertex buffer. The simplest GPU entry point.', code: `import { gpu } from 'aigpu'\n\nconst gpuCtx = gpu()\nconst canvas = document.querySelector('canvas')\n\nawait gpuCtx.configure({\n  canvas,\n  format: navigator.gpu.getPreferredCanvasFormat(),\n})\n\nconst pipeline = gpuCtx.device.createRenderPipeline({\n  layout: 'auto',\n  vertex: {\n    module: gpuCtx.device.createShaderModule({\n      code: \`@vertex fn v(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {\n        var pos = array<vec2f, 3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));\n        return vec4f(pos[i], 0, 1);\n      }\`,\n    }),\n    entryPoint: 'v',\n  },\n  fragment: {\n    module: gpuCtx.device.createShaderModule({\n      code: \`@fragment fn f() -> @location(0) vec4f {\n        return vec4f(1);\n      }\`,\n    }),\n    entryPoint: 'f',\n    targets: [{ format: gpuCtx.format }],\n  },\n})\n\nfunction render() {\n  const pass = gpuCtx.beginPass({ canvas })\n  pass.setPipeline(pipeline)\n  pass.draw(3)\n  pass.end()\n  gpuCtx.submit()\n}\n\nrender()`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s02_fullscreen_triangle/renderer.ts' },
+      { id: 's03_sharing', title: 's03 — sharing GPU contexts', category: 'gpu_core', tags: 'context share workers', description: 'Share one GPU device across tabs, workers, or multiple canvases.', code: `import { gpu } from 'aigpu'\n\nconst a = gpu()\nconst b = gpu()\n\n// Same device, different canvases\nawait a.configure({ canvas: canvasA, format: 'bgra8unorm' })\nawait b.configure({ canvas: canvasB, format: 'bgra8unorm' })\n\n// Both draw same pipeline, different uniforms\nconst pipeline = a.device.createRenderPipeline({ ... })\n\nfunction renderFrame(t) {\n  const passA = a.beginPass({ canvas: canvasA })\n  passA.setPipeline(pipeline)\n  passA.draw(3)\n  passA.end()\n\n  const passB = b.beginPass({ canvas: canvasB })\n  passB.setPipeline(pipeline)\n  passB.draw(3)\n  passB.end()\n\n  a.submit()\n  b.submit()\n  requestAnimationFrame(renderFrame)\n}\nrequestAnimationFrame(renderFrame)`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s03_sharing_contexts/renderer.ts' },
+      { id: 's04_shared_uniforms', title: 's04 — shared uniforms', category: 'gpu_core', tags: 'uniform buffer bindgroup', description: 'One uniform buffer drives multiple pipelines simultaneously.', code: `import { gpu, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst time = Uniform(gpuCtx.device, { size: 16 })\n\nconst bindGroup = gpuCtx.device.createBindGroup({\n  layout: pipeline.getBindGroupLayout(0),\n  entries: [{ binding: 0, resource: time.buffer }],\n})\n\nfunction render(t) {\n  time.write(new Float32Array([t * 0.001, 0, 0, 0]))\n  const pass = gpuCtx.beginPass({ canvas })\n  pass.setPipeline(pipeline)\n  pass.setBindGroup(0, bindGroup)\n  pass.draw(3)\n  pass.end()\n  gpuCtx.submit()\n  requestAnimationFrame(render)\n}\nrequestAnimationFrame(render)`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s04_shared_uniforms/renderer.ts' },
+      { id: 's05_fixits', title: 's05 — fixits: common patterns', category: 'gpu_core', tags: 'patterns fixes common', description: 'Reusable patterns for resize handling, error recovery, and cleanup.', code: `import { gpu, onResize, onDestroy } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\n// Auto-resize\nonResize(canvas, (w, h) => {\n  gpuCtx.configure({ canvas, width: w, height: h })\n  render()\n})\n\n// Cleanup on destroy\nonDestroy(() => {\n  gpuCtx.device.destroy()\n})\n\n// Error boundary\ntry {\n  const pipeline = gpuCtx.device.createRenderPipeline({ ... })\n} catch (e) {\n  console.error('Pipeline creation failed:', e)\n  // Fallback to software renderer\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s05_fixits/renderer.ts' },
+      { id: 's06_scene', title: 's06 — scene graph', category: 'gpu_core', tags: 'scene graph objects hierarchy', description: 'Build a renderable scene graph with transforms and children.', code: `import { gpu, Scene, Mesh, Camera } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst scene = Scene()\nconst camera = Camera({ fov: 60, near: 0.1, far: 100 })\n\nconst mesh = Mesh({\n  geometry: 'cube',\n  material: { color: [1, 1, 1] },\n})\n\nscene.add(mesh)\nscene.add(camera)\n\nfunction render(t) {\n  mesh.rotation.y = t * 0.001\n  scene.render(camera)\n  requestAnimationFrame(render)\n}\nrequestAnimationFrame(render)`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s06_scene_graph/renderer.ts' },
+      { id: 's07_hdr_post', title: 's07 — HDR + post processing', category: 'gpu_core', tags: 'hdr post processing tone mapping', description: 'HDR rendering with tone mapping and post-processing effects.', code: `import { gpu, RenderTarget, PostProcess } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst hdrTarget = RenderTarget(gpuCtx, {\n  width: canvas.width,\n  height: canvas.height,\n  format: 'rgba16float',\n})\n\nconst bloom = PostProcess(gpuCtx, {\n  shader: 'bloom',\n  intensity: 0.3,\n})\n\nfunction render(t) {\n  const pass = gpuCtx.beginPass({ target: hdrTarget })\n  // Draw scene to HDR target\n  pass.end()\n\n  bloom.apply(hdrTarget.texture)\n  const out = gpuCtx.beginPass({ canvas })\n  // Draw fullscreen quad with bloom result\n  out.end()\n  gpuCtx.submit()\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s07_hdr_post/renderer.ts' },
+      { id: 's08_ping_pong', title: 's08 — ping-pong buffers', category: 'gpu_core', tags: 'ping pong buffer compute', description: 'Double-buffered compute for iterative simulations.', code: `import { gpu, pingPong } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst { read, write, swap } = pingPong(gpuCtx, 8, 8, {\n  format: 'rgba8unorm',\n})\n\nconst computePipeline = gpuCtx.device.createComputePipeline({\n  layout: 'auto',\n  compute: {\n    module: gpuCtx.device.createShaderModule({\n      code: computeShader,\n    }),\n    entryPoint: 'main',\n  },\n})\n\nfunction simulate() {\n  const encoder = gpuCtx.device.createCommandEncoder()\n  const pass = encoder.beginComputePass()\n  pass.setPipeline(computePipeline)\n  pass.setBindGroup(0, read.bindGroup)\n  pass.dispatchWorkgroups(8, 8)\n  pass.end()\n  gpuCtx.device.queue.submit([encoder.finish()])\n  swap()\n  requestAnimationFrame(simulate)\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s08_ping_pong/renderer.ts' },
+      { id: 's09_bundles', title: 's09 — render bundles', category: 'gpu_core', tags: 'render bundle recording', description: 'Record GPU command bundles for instant replay.', code: `import { gpu, Bundle } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst bundle = Bundle(gpuCtx, (pass) => {\n  pass.setPipeline(pipeline)\n  pass.setBindGroup(0, bindGroup)\n  pass.draw(6)\n})\n\nfunction render() {\n  const pass = gpuCtx.beginPass({ canvas })\n  pass.executeBundles([bundle])\n  pass.end()\n  gpuCtx.submit()\n}\n\n// Replay is near-instant\nrender()`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s09_render_bundles/renderer.ts' },
+      { id: 's10_group_claim', title: 's10 — group claim', category: 'gpu_core', tags: 'group claim compute', description: 'Claim compute groups for parallel work distribution.', code: `import { gpu, claim } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst groups = claim(gpuCtx, {\n  count: 16,\n  size: [256, 1, 1],\n})\n\nfunction compute() {\n  const encoder = gpuCtx.device.createCommandEncoder()\n  const pass = encoder.beginComputePass()\n  pass.setPipeline(computePipeline)\n  groups.forEach((g) => {\n    pass.setBindGroup(0, g.bindGroup)\n    pass.dispatchWorkgroups(256, 1, 1)\n  })\n  pass.end()\n  gpuCtx.device.queue.submit([encoder.finish()])\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s10_group_claim/renderer.ts' },
+      { id: 's11_compute', title: 's11 — compute shaders', category: 'gpu_core', tags: 'compute shader particles', description: 'Run compute shaders for particle simulations.', code: `import { gpu, Storage } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst particles = Storage(gpuCtx, {\n  size: 1024 * 4,\n  usage: 'storage | vertex',\n})\n\nconst computePipeline = gpuCtx.device.createComputePipeline({\n  layout: 'auto',\n  compute: {\n    module: gpuCtx.device.createShaderModule({\n      code: \`@group(0) @binding(0) var<storage, read_write> data: array<vec4f>;\n      @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3u) {\n        let i = id.x;\n        if (i >= arrayLength(&data)) { return; }\n        data[i] += vec4f(0.0, -0.001, 0.0, 0.0);\n      }\`,\n    }),\n    entryPoint: 'main',\n  },\n})\n\nfunction simulate() {\n  const encoder = gpuCtx.device.createCommandEncoder()\n  const pass = encoder.beginComputePass()\n  pass.setPipeline(computePipeline)\n  pass.setBindGroup(0, particles.bindGroup)\n  pass.dispatchWorkgroups(16, 1, 1)\n  pass.end()\n  gpuCtx.device.queue.submit([encoder.finish()])\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s11_compute/renderer.ts' },
+      { id: 's12_scheduling_resize', title: 's12 — scheduling + resize', category: 'gpu_core', tags: 'scheduling resize frame', description: 'Adaptive frame scheduling with automatic resize handling.', code: `import { gpu, onResize, schedule } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nonResize(canvas, (w, h) => {\n  gpuCtx.configure({ canvas, width: w, height: h })\n})\n\nconst loop = schedule((dt) => {\n  const pass = gpuCtx.beginPass({ canvas })\n  pass.setPipeline(pipeline)\n  pass.draw(3)\n  pass.end()\n  gpuCtx.submit()\n})\n\n// Automatically adjusts to display refresh rate\nloop.start()`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s12_scheduling_resize/renderer.ts' },
+      { id: 's13_headless', title: 's13 — headless rendering', category: 'gpu_core', tags: 'headless offscreen server', description: 'Render without a visible canvas — server-side or offscreen.', code: `import { gpu } from 'aigpu'\n\nconst gpuCtx = gpu({ headless: true })\n\nconst texture = gpuCtx.device.createTexture({\n  size: [512, 512],\n  format: 'rgba8unorm',\n  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,\n})\n\nconst pass = gpuCtx.beginPass({ target: texture })\npass.setPipeline(pipeline)\npass.draw(3)\npass.end()\ngpuCtx.submit()\n\n// Read back pixels\nconst buffer = gpuCtx.readBack(texture)\nconst pixels = new Uint8Array(await buffer.arrayBuffer())`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s13_headless/renderer.ts' },
+      { id: 's14_raymarching', title: 's14 — raymarching', category: 'gpu_extra', tags: 'raymarching sdf ray tracing', description: 'GPU raymarching for procedural 3D scenes with SDFs.', code: `import { gpu } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst shader = \`struct Uniforms { time: f32, resolution: vec2f };\n@group(0) @binding(0) var<uniform> u: Uniforms;\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / u.resolution - 0.5;\n  let ro = vec3f(0, 0, -3);\n  let rd = normalize(vec3f(uv, 1.5));\n  var t = 0.0;\n  for (var i = 0; i < 64; i++) {\n    let p = ro + rd * t;\n    let d = min(length(p) - 0.5, length(p - vec3f(1,0,0)) - 0.3);\n    if (d < 0.001) { break; }\n    t += d;\n  }\n  let col = select(vec4f(0), vec4f(1), t < 20.0);\n  return col;\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s14_raymarching/renderer.ts' },
+      { id: 's15_noise_fields', title: 's15 — procedural noise', category: 'gpu_extra', tags: 'noise perlin simplex procedural', description: 'Procedural noise fields for terrain, textures, and effects.', code: `import { gpu, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst time = Uniform(gpuCtx.device, { size: 16 })\n\nconst noiseShader = \`fn noise(p: vec2f) -> f32 {\n  let i = floor(p);\n  let f = fract(p);\n  let u = f * f * (3.0 - 2.0 * f);\n  return mix(\n    mix(dot(rand(i + vec2f(0,0)), f - vec2f(0,0)),\n        dot(rand(i + vec2f(1,0)), f - vec2f(1,0)), u.x),\n    mix(dot(rand(i + vec2f(0,1)), f - vec2f(0,1)),\n        dot(rand(i + vec2f(1,1)), f - vec2f(1,1)), u.x),\n    u.y\n  );\n}\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let n = noise(pos.xy * 0.01 + u.time);\n  return vec4f(vec3f(n), 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s15_noise_fields/renderer.ts' },
+      { id: 's16_particle_system', title: 's16 — particle system', category: 'gpu_extra', tags: 'particles gpu compute simulation', description: 'GPU-driven particle system with physics and collisions.', code: `import { gpu, Storage } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst MAX = 10000\nconst positions = Storage(gpuCtx, { size: MAX * 16, usage: 'storage | vertex' })\nconst velocities = Storage(gpuCtx, { size: MAX * 16, usage: 'storage' })\n\nconst computeShader = \`@group(0) @binding(0) var<storage, read_write> pos: array<vec4f>;\n@group(0) @binding(1) var<storage, read_write> vel: array<vec4f>;\n@group(0) @binding(2) var<uniform> dt: f32;\n\n@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3u) {\n  let i = id.x;\n  if (i >= arrayLength(&pos)) { return; }\n  vel[i].y -= 9.8 * dt;\n  pos[i] += vel[i] * dt;\n  if (pos[i].y < -1.0) { pos[i] = vec4f(0, 2, 0, 1); vel[i] = vec4f(rand(i), 1, rand(i+1), 0); }\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s16_particle_system/renderer.ts' },
+      { id: 's17_volumetric', title: 's17 — volumetric rendering', category: 'gpu_extra', tags: 'volumetric fog scattering', description: 'Volumetric fog and light scattering with ray marching.', code: `import { gpu, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst volumetricShader = \`@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  let ro = vec3f(uv * 2.0 - 1.0, -3);\n  let rd = vec3f(0, 0, 1);\n  var density = 0.0;\n  for (var i = 0; i < 64; i++) {\n    let p = ro + rd * f32(i) * 0.1;\n    let n = fbm(p.xz * 0.5 + u.time * 0.1);\n    density += n * 0.02;\n  }\n  return vec4f(vec3f(density), 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s17_volumetric/renderer.ts' },
+      { id: 's18_post_process', title: 's18 — post-processing chain', category: 'gpu_extra', tags: 'post processing bloom blur', description: 'Multi-pass post-processing with bloom, blur, and tone mapping.', code: `import { gpu, RenderTarget, PostProcess } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst sceneTarget = RenderTarget(gpuCtx, { width: 1024, height: 1024, format: 'rgba16float' })\nconst blurPing = RenderTarget(gpuCtx, { width: 256, height: 256, format: 'rgba16float' })\nconst blurPong = RenderTarget(gpuCtx, { width: 256, height: 256, format: 'rgba16float' })\n\nconst brightPass = PostProcess(gpuCtx, { shader: 'brightness', threshold: 0.8 })\nconst blurH = PostProcess(gpuCtx, { shader: 'gaussian_h', radius: 4 })\nconst blurV = PostProcess(gpuCtx, { shader: 'gaussian_v', radius: 4 })\nconst composite = PostProcess(gpuCtx, { shader: 'composite', intensity: 0.4 })\n\nfunction render(t) {\n  // 1) Draw scene\n  const scenePass = gpuCtx.beginPass({ target: sceneTarget })\n  // draw scene...\n  scenePass.end()\n  // 2) Extract bright\n  brightPass.apply(sceneTarget.texture, blurPing)\n  // 3) Blur ping-pong\n  for (let i = 0; i < 3; i++) {\n    blurH.apply(blurPing.texture, blurPong)\n    blurV.apply(blurPong.texture, blurPing)\n  }\n  // 4) Composite\n  const out = gpuCtx.beginPass({ canvas })\n  composite.apply(sceneTarget.texture, null, { extra: blurPing.texture })\n  out.end()\n  gpuCtx.submit()\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s18_post_process/renderer.ts' },
+      { id: 's19_domain_warping', title: 's19 — domain warping', category: 'gpu_extra', tags: 'domain warping fbm distortion', description: 'Domain warping for organic, flowing procedural patterns.', code: `import { gpu, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst warpShader = \`fn fbm(p: vec2f) -> f32 {\n  var v = 0.0; var a = 0.5;\n  var shift = vec2f(100.0);\n  var pp = p;\n  for (var i = 0; i < 5; i++) {\n    v += a * noise(pp);\n    pp = vec2f(pp.y * 1.6 + shift.x, pp.x * 1.6 + shift.y);\n    a *= 0.5;\n  }\n  return v;\n}\n\n@fragment fn f(@builtin(position> pos: vec4f) -> @location(0) vec4f {\n  let q = vec2f(fbm(pos.xy * 0.005), fbm(pos.xy * 0.005 + vec2f(5.2, 1.3)));\n  let r = vec2f(fbm(pos.xy * 0.005 + q * 4.0 + vec2f(1.7, 9.2)),\n                fbm(pos.xy * 0.005 + q * 4.0 + vec2f(8.3, 2.8)));\n  let f = fbm(pos.xy * 0.005 + r * 2.0);\n  return vec4f(f, f * 0.8, f * 0.6, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s19_domain_warping/renderer.ts' },
+      { id: 's20_texture_gen', title: 's20 — procedural textures', category: 'gpu_extra', tags: 'procedural texture generation', description: 'Generate textures entirely on the GPU with math.', code: `import { gpu, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst textureShader = \`@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  // Checkerboard\n  let check = fract(floor(uv.x * 16.0) + floor(uv.y * 16.0));\n  // Circle\n  let d = length(uv - 0.5);\n  let circle = smoothstep(0.3, 0.31, d);\n  // Stripe\n  let stripe = sin(uv.x * 60.0 + u.time) * 0.5 + 0.5;\n  // Mix\n  let col = mix(vec3f(check), vec3f(circle), 0.5);\n  col = mix(col, vec3f(stripe), 0.3);\n  return vec4f(col, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s20_texture_gen/renderer.ts' },
+      { id: 's21_edge_detect', title: 's21 — edge detection', category: 'gpu_extra', tags: 'edge detection sobel filter', description: 'GPU edge detection with Sobel and custom kernels.', code: `import { gpu, Texture } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst sceneTexture = Texture(gpuCtx, { width: 512, height: 512, format: 'rgba8unorm' })\n\nconst edgeShader = \`@group(0) @binding(0) var tex: texture_2d<f32>;\n@group(0) @binding(1) var samp: sampler;\n\nconst kernel_x = array<f32, 9>(-1, 0, 1, -2, 0, 2, -1, 0, 1);\nconst kernel_y = array<f32, 9>(-1, -2, -1, 0, 0, 0, 1, 2, 1);\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  var gx = vec3f(0.0); var gy = vec3f(0.0);\n  for (var ky = -1; ky <= 1; ky++) {\n    for (var kx = -1; kx <= 1; kx++) {\n      let s = textureSample(tex, samp, uv + vec2f(f32(kx), f32(ky)) / resolution);\n      let ki = (ky + 1) * 3 + (kx + 1);\n      gx += s.rgb * kernel_x[ki];\n      gy += s.rgb * kernel_y[ki];\n    }\n  }\n  let edge = sqrt(gx * gx + gy * gy);\n  return vec4f(edge, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s21_edge_detect/renderer.ts' },
+      { id: 's22_color_palette', title: 's22 — color palette', category: 'gpu_extra', tags: 'color palette palette rotation', description: 'GPU color palette rotation for style transfer effects.', code: `import { gpu, Uniform, Texture } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst palette = Texture.fromData(gpuCtx, {\n  data: new Uint8Array([\n    255,0,0,255, 0,255,0,255, 0,0,255,255, 255,255,0,255,\n    255,0,255,255, 0,255,255,255, 128,128,0,255, 255,128,0,255,\n  ]),\n  width: 8, height: 1,\n  format: 'rgba8unorm',\n})\n\nconst paletteShader = \`@group(0) @binding(0) var tex: texture_2d<f32>;\n@group(0) @binding(1) var palTex: texture_2d<f32>;\n@group(0) @binding(2) var samp: sampler;\n@group(0) @binding(3) var<uniform> time: f32;\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  let src = textureSample(tex, samp, uv);\n  let idx = (src.r * 7.0 + time) % 8.0;\n  let pal = textureSample(palTex, samp, vec2f((idx + 0.5) / 8.0, 0.5));\n  return vec4f(pal.rgb, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/s22_color_palette/renderer.ts' },
+      { id: 'cockpit', title: 'Cockpit: agent flight deck', category: 'agent', tags: 'cockpit status progress activity', description: 'Aircraft instrument panel showing agent status, CPU/GPU load, and event history.', code: `import { createApp, ref, onMounted } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const status = ref('working')\n    const progress = ref(64)\n    const activity = ref(42)\n    const gpuLoad = ref(78)\n    const memUsage = ref(3.2)\n    const events = ref([])\n\n    onMounted(() => {\n      const canvas = document.getElementById('cockpit-canvas')\n      const gpuCtx = gpu()\n      gpuCtx.configure({ canvas })\n      // Draw instrument panel\n      function drawPanel() {\n        const ctx = canvas.getContext('2d')\n        ctx.fillStyle = '#000'\n        ctx.fillRect(0, 0, canvas.width, canvas.height)\n        // Status ring, progress bar, load indicators\n        drawInstruments(ctx, { status, progress, gpuLoad, memUsage })\n      }\n      drawPanel()\n    })\n\n    return { status, progress, activity, gpuLoad, memUsage, events }\n  }\n}).mount('#cockpit')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/cockpit/renderer.ts' },
+      { id: 'dashboard', title: 'Dashboard: operational metrics', category: 'agent', tags: 'dashboard metrics cards', description: 'Real-time dashboard with metric cards, charts, and status indicators.', code: `import { createApp, ref, computed } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const metrics = ref({\n      tasks: 42,\n      latency: 23,\n      throughput: 1200,\n      errors: 2,\n    })\n    const status = ref('working')\n    const progress = ref(64)\n\n    const chartData = computed(() =>\n      Array.from({ length: 20 }, (_, i) =>\n        Math.sin(Date.now() * 0.001 + i * 0.5) * 50 + 50\n      )\n    )\n\n    return { metrics, status, progress, chartData }\n  }\n}).mount('#dashboard')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/dashboard/renderer.ts' },
+      { id: 'replay', title: 'Replay: event time travel', category: 'agent', tags: 'replay timeline events', description: 'Step through agent events forward and backward with full state inspection.', code: `import { createApp, ref, computed } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const events = ref([\n      { type: 'patch', state: 'thinking', progress: 0 },\n      { type: 'patch', state: 'working', progress: 30 },\n      { type: 'patch', state: 'working', progress: 65 },\n      { type: 'patch', state: 'success', progress: 100 },\n    ])\n    const cursor = ref(0)\n    const currentEvent = computed(() => events.value[cursor.value])\n\n    function prev() { cursor.value = Math.max(0, cursor.value - 1) }\n    function next() { cursor.value = Math.min(events.value.length - 1, cursor.value + 1) }\n\n    return { events, cursor, currentEvent, prev, next }\n  }\n}).mount('#replay')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/replay/renderer.ts' },
+      { id: 'agent_animation', title: 'Agent animation states', category: 'agent', tags: 'agent animation states particles', description: 'Animated particle states showing agent transitions and status changes.', code: `import { createApp, ref, onMounted } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const status = ref('working')\n    const progress = ref(64)\n    const activity = ref(42)\n    const transitions = ref([])\n\n    onMounted(() => {\n      const canvas = document.getElementById('agent-canvas')\n      const gpuCtx = gpu()\n      gpuCtx.configure({ canvas })\n\n      function animate(t) {\n        drawAgent(canvas, t, { status, progress, activity })\n        requestAnimationFrame(animate)\n      }\n      requestAnimationFrame(animate)\n    })\n\n    watch(status, (newVal, oldVal) => {\n      transitions.value.unshift({ from: oldVal, to: newVal, time: Date.now() })\n    })\n\n    return { status, progress, activity, transitions }\n  }\n}).mount('#agent')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/agent_animation/renderer.ts' },
+      { id: 'state_tools', title: 'State tools: patch + diff', category: 'agent', tags: 'state tools patch diff', description: 'JSON patch operations with visual diff for agent state management.', code: `import { createApp, ref, computed } from 'vue'\n\ncreateApp({\n  setup() {\n    const state = ref({ task: 'compile', status: 'working', progress: 50 })\n    const patches = ref([])\n    const diffs = ref([])\n\n    const patch = (newState) => {\n      const diff = computeDiff(state.value, newState)\n      patches.value.push(diff)\n      diffs.value.push({ time: Date.now(), diff })\n      state.value = { ...state.value, ...newState }\n    }\n\n    function computeDiff(a, b) {\n      const changes = []\n      for (const key in b) {\n        if (a[key] !== b[key]) changes.push({ op: 'replace', path: '/' + key, value: b[key] })\n      }\n      return changes\n    }\n\n    return { state, patches, diffs, patch }\n  }\n}).mount('#state')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/state_tools/renderer.ts' },
+      { id: 'transmission', title: 'Transmission: GPU texture pass', category: 'advanced', tags: 'transmission texture render', description: 'GPU texture transmission for multi-render-pass compositing.', code: `import { gpu, RenderTarget, Texture } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst targetA = RenderTarget(gpuCtx, { width: 512, height: 512, format: 'rgba8unorm' })\nconst targetB = RenderTarget(gpuCtx, { width: 512, height: 512, format: 'rgba8unorm' })\n\n// Pass A: render scene to texture\nfunction passA() {\n  const pass = gpuCtx.beginPass({ target: targetA })\n  pass.setPipeline(scenePipeline)\n  pass.draw(6)\n  pass.end()\n}\n\n// Pass B: post-process from texture A to B\nfunction passB() {\n  const pass = gpuCtx.beginPass({ target: targetB })\n  pass.setPipeline(postPipeline)\n  pass.setBindGroup(0, targetA.bindGroup)\n  pass.draw(3)\n  pass.end()\n}\n\n// Pass C: composite to screen\nfunction passC() {\n  const pass = gpuCtx.beginPass({ canvas })\n  pass.setPipeline(compositePipeline)\n  pass.setBindGroup(0, targetB.bindGroup)\n  pass.draw(3)\n  pass.end()\n}\n\ngpuCtx.submit()`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/transmission/renderer.ts' },
+      { id: 'fluid', title: 'Fluid simulation', category: 'advanced', tags: 'fluid simulation navier stokes', description: 'Navier-Stokes fluid simulation running entirely on the GPU.', code: `import { gpu, pingPong } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst N = 512\nconst velocity = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\nconst pressure = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\nconst divergence = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\n\nconst advect = gpuCtx.device.createComputePipeline({ ... })\nconst divergenceCompute = gpuCtx.device.createComputePipeline({ ... })\nconst pressureSolve = gpuCtx.device.createComputePipeline({ ... })\nconst gradientSubtract = gpuCtx.device.createComputePipeline({ ... })\n\nfunction simulate(dt) {\n  // Advect velocity\n  // Compute divergence\n  // Jacobi pressure solve (20 iterations)\n  // Subtract gradient\n  // Advect dye\n  velocity.swap()\n  pressure.swap()\n}`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/fluid/renderer.ts' },
+      { id: 'gallery', title: 'Gallery: example showcase', category: 'advanced', tags: 'gallery showcase examples', description: 'Interactive gallery showcasing all AIGpu rendering capabilities.', code: `import { createApp, ref } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const examples = ref([\n      { id: 'fullscreen', name: 'Fullscreen Triangle' },\n      { id: 'shared_uniforms', name: 'Shared Uniforms' },\n      { id: 'compute', name: 'Compute Shaders' },\n      { id: 'raymarching', name: 'Raymarching' },\n    ])\n    const active = ref('fullscreen')\n\n    function select(id) {\n      active.value = id\n    }\n\n    return { examples, active, select }\n  }\n}).mount('#gallery')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/gallery/renderer.ts' },
+      { id: 'lava', title: 'Lava: procedural fire flow', category: 'advanced', tags: 'lava fire procedural flow', description: 'Procedural lava with turbulent flow and heat dissipation.', code: `import { gpu, pingPong, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst N = 256\nconst heat = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\nconst time = Uniform(gpuCtx.device, { size: 16 })\n\nconst lavaShader = \`@group(0) @binding(0) var tex: texture_2d<f32>;\n@group(0) @binding(1) var samp: sampler;\n@group(0) @binding(2) var<uniform> time: f32;\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  let h = textureSample(tex, samp, uv).r;\n  let flow = fbm(uv * 3.0 + vec2f(time * 0.1, -time * 0.2));\n  let temp = h + flow * 0.3;\n  let r = smoothstep(0.2, 0.8, temp);\n  let g = smoothstep(0.4, 0.9, temp) * 0.5;\n  let b = smoothstep(0.6, 1.0, temp) * 0.2;\n  return vec4f(r, g, b, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/lava/renderer.ts' },
+      { id: 'mesh_edit', title: 'Mesh editor', category: 'advanced', tags: 'mesh editor vertices edges', description: 'Interactive mesh editor with vertex manipulation on the GPU.', code: `import { createApp, ref } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const vertices = ref([\n      { x: 0, y: 0, z: 0 },\n      { x: 1, y: 0, z: 0 },\n      { x: 0.5, y: 1, z: 0 },\n    ])\n    const edges = ref([[0, 1], [1, 2], [2, 0]])\n    const selected = ref(-1)\n\n    function selectVertex(i) { selected.value = i }\n    function moveSelected(dx, dy) {\n      if (selected.value >= 0) {\n        vertices.value[selected.value].x += dx\n        vertices.value[selected.value].y += dy\n      }\n    }\n\n    return { vertices, edges, selected, selectVertex, moveSelected }\n  }\n}).mount('#mesh')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/mesh_edit/renderer.ts' },
+      { id: 'dom_mount', title: 'DOM mount: hybrid rendering', category: 'advanced', tags: 'dom mount hybrid html', description: 'Hybrid GPU + DOM rendering with CSS transform overlays.', code: `import { createApp, ref, onMounted } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const overlays = ref([])\n    const canvasRef = ref(null)\n\n    onMounted(() => {\n      const canvas = canvasRef.value\n      const gpuCtx = gpu()\n      gpuCtx.configure({ canvas })\n\n      // GPU renders base layer\n      // DOM overlays positioned via CSS transforms\n      function updateOverlays() {\n        const state = getState()\n        overlays.value = state.particles.map(p => ({\n          x: p.x, y: p.y,\n          label: p.label,\n          style: { transform: \`translate(\${p.x}px, \${p.y}px)\` }\n        }))\n      }\n    })\n\n    return { overlays, canvasRef }\n  }\n}).mount('#dom')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/dom_mount/renderer.ts' },
+    ]);
+
+    const frameworks = ref([
+      { id: 'vue', name: 'Vue 3', lang: 'Vue SFC', desc: 'Reactive refs drive GPU state. Single-file components with Composition API.', code: `<!-- AIGpuAgent.vue -->\n<template>\n  <div class="agent">\n    <canvas ref="canvasRef" width="400" height="300" />\n    <div class="controls">\n      <select v-model="status">\n        <option>idle</option>\n        <option>thinking</option>\n        <option>working</option>\n        <option>success</option>\n        <option>error</option>\n      </select>\n      <input type="range" v-model.number="progress" min="0" max="100" />\n    </div>\n  </div>\n</template>\n\n<script setup>\nimport { ref, onMounted, watch } from 'vue'\nimport { gpu } from 'aigpu'\n\nconst canvasRef = ref(null)\nconst status = ref('working')\nconst progress = ref(64)\nconst activity = ref(42)\n\nlet gpuCtx = null\nlet pipeline = null\nlet uniformBuffer = null\n\nonMounted(() => {\n  gpuCtx = gpu()\n  gpuCtx.configure({ canvas: canvasRef.value })\n\n  uniformBuffer = gpuCtx.device.createBuffer({\n    size: 32,\n    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n  })\n\n  pipeline = gpuCtx.device.createRenderPipeline({\n    layout: 'auto',\n    vertex: {\n      module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n      entryPoint: 'main',\n    },\n    fragment: {\n      module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n      entryPoint: 'main',\n      targets: [{ format: gpuCtx.format }],\n    },\n  })\n\n  render()\n})\n\nwatch([status, progress, activity], () => {\n  gpuCtx.device.queue.writeBuffer(\n    uniformBuffer, 0,\n    new Float32Array([\n      statusToFloat(status.value),\n      progress.value / 100,\n      activity.value / 100,\n      performance.now() / 1000,\n    ])\n  )\n})\n\nfunction render() {\n  const pass = gpuCtx.beginPass({ canvas: canvasRef.value })\n  pass.setPipeline(pipeline)\n  pass.setBindGroup(0, bindGroup)\n  pass.draw(3)\n  pass.end()\n  gpuCtx.submit()\n  requestAnimationFrame(render)\n}\n\nfunction statusToFloat(s) {\n  return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] || 0\n}\n</script>` },
+      { id: 'react', name: 'React', lang: 'TSX', desc: 'useRef for canvas. useEffect for lifecycle. GPU state via props/callbacks.', code: `// AIGpuAgent.tsx\nimport { useRef, useEffect, useState, useCallback } from 'react'\nimport { gpu } from 'aigpu'\n\ninterface AgentProps {\n  initialStatus?: string\n  onStatusChange?: (status: string) => void\n}\n\nexport function AIGpuAgent({\n  initialStatus = 'working',\n  onStatusChange,\n}: AgentProps) {\n  const canvasRef = useRef<HTMLCanvasElement>(null)\n  const gpuRef = useRef<ReturnType<typeof gpu> | null>(null)\n  const [status, setStatus] = useState(initialStatus)\n  const [progress, setProgress] = useState(64)\n  const [activity, setActivity] = useState(42)\n\n  useEffect(() => {\n    if (!canvasRef.current) return\n\n    const gpuCtx = gpu()\n    gpuRef.current = gpuCtx\n\n    gpuCtx.configure({ canvas: canvasRef.current })\n\n    const uniformBuffer = gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    const pipeline = gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: gpuCtx.format }],\n      },\n    })\n\n    let animId: number\n    function render() {\n      const pass = gpuCtx.beginPass({ canvas: canvasRef.current! })\n      pass.setPipeline(pipeline)\n      pass.draw(3)\n      pass.end()\n      gpuCtx.submit()\n      animId = requestAnimationFrame(render)\n    }\n    render()\n\n    return () => {\n      cancelAnimationFrame(animId)\n      gpuCtx.device.destroy()\n    }\n  }, [])\n\n  useEffect(() => {\n    if (!gpuRef.current) return\n    gpuRef.current.device.queue.writeBuffer(\n      uniformBuffer, 0,\n      new Float32Array([\n        statusToFloat(status),\n        progress / 100,\n        activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }, [status, progress, activity])\n\n  const handleStatusChange = useCallback((e) => {\n    const newStatus = e.target.value\n    setStatus(newStatus)\n    onStatusChange?.(newStatus)\n  }, [onStatusChange])\n\n  return (\n    <div className="agent">\n      <canvas ref={canvasRef} width={400} height={300} />\n      <div className="controls">\n        <select value={status} onChange={handleStatusChange}>\n          <option value="idle">idle</option>\n          <option value="thinking">thinking</option>\n          <option value="working">working</option>\n          <option value="success">success</option>\n          <option value="error">error</option>\n        </select>\n        <input\n          type="range"\n          min={0}\n          max={100}\n          value={progress}\n          onChange={(e) => setProgress(Number(e.target.value))}\n        />\n      </div>\n    </div>\n  )\n}\n\nfunction statusToFloat(s: string): number {\n  return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n}` },
+      { id: 'purejs', name: 'Pure JS', lang: 'JavaScript', desc: 'Zero dependencies. Direct GPU API. Works anywhere with WebGPU.', code: `// agent.js\nimport { gpu } from 'aigpu'\n\nclass AIGpuAgent {\n  constructor(canvas, options = {}) {\n    this.canvas = canvas\n    this.status = options.status || 'idle'\n    this.progress = options.progress || 0\n    this.activity = options.activity || 0\n\n    this.gpuCtx = gpu()\n    this.gpuCtx.configure({ canvas })\n\n    this.uniformBuffer = this.gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    this.pipeline = this.gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: this.gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: this.gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: this.gpuCtx.format }],\n      },\n    })\n\n    this.render()\n  }\n\n  patch(state) {\n    if (state.status !== undefined) this.status = state.status\n    if (state.progress !== undefined) this.progress = state.progress\n    if (state.activity !== undefined) this.activity = state.activity\n\n    this.gpuCtx.device.queue.writeBuffer(\n      this.uniformBuffer, 0,\n      new Float32Array([\n        this._statusToFloat(this.status),\n        this.progress / 100,\n        this.activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }\n\n  render() {\n    const pass = this.gpuCtx.beginPass({ canvas: this.canvas })\n    pass.setPipeline(this.pipeline)\n    pass.setBindGroup(0, this.bindGroup)\n    pass.draw(3)\n    pass.end()\n    this.gpuCtx.submit()\n    this._rafId = requestAnimationFrame(() => this.render())\n  }\n\n  destroy() {\n    cancelAnimationFrame(this._rafId)\n    this.gpuCtx.device.destroy()\n  }\n\n  _statusToFloat(s) {\n    return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n  }\n}\n\n// Usage\nconst agent = new AIGpuAgent(document.querySelector('canvas'))\nagent.patch({ status: 'working', progress: 50 })\n\n// Accepts plain objects — no framework needed\nws.onmessage = (e) => agent.patch(JSON.parse(e.data))` },
+      { id: 'svelte', name: 'Svelte', lang: 'Svelte', desc: 'Reactive statements auto-sync GPU state. Compile-time optimized.', code: `<!-- AIGpuAgent.svelte -->\n<script>\n  import { onMount, onDestroy } from 'svelte'\n  import { gpu } from 'aigpu'\n\n  export let status = 'working'\n  export let progress = 64\n  export let activity = 42\n\n  let canvas\n  let gpuCtx\n  let pipeline\n  let uniformBuffer\n  let bindGroup\n  let rafId\n\n  onMount(() => {\n    gpuCtx = gpu()\n    gpuCtx.configure({ canvas })\n\n    uniformBuffer = gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    pipeline = gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: gpuCtx.format }],\n      },\n    })\n\n    bindGroup = gpuCtx.device.createBindGroup({\n      layout: pipeline.getBindGroupLayout(0),\n      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],\n    })\n\n    render()\n  })\n\n  onDestroy(() => {\n    cancelAnimationFrame(rafId)\n    gpuCtx?.device?.destroy()\n  })\n\n  // Reactive: auto-update GPU when state changes\n  $: if (gpuCtx && uniformBuffer) {\n    gpuCtx.device.queue.writeBuffer(\n      uniformBuffer, 0,\n      new Float32Array([\n        statusToFloat(status),\n        progress / 100,\n        activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }\n\n  function render() {\n    const pass = gpuCtx.beginPass({ canvas })\n    pass.setPipeline(pipeline)\n    pass.setBindGroup(0, bindGroup)\n    pass.draw(3)\n    pass.end()\n    gpuCtx.submit()\n    rafId = requestAnimationFrame(render)\n  }\n\n  function statusToFloat(s) {\n    return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n  }\n</script>\n\n<div class="agent">\n  <canvas bind:this={canvas} width="400" height="300" />\n  <div class="controls">\n    <select bind:value={status}>\n      <option value="idle">idle</option>\n      <option value="thinking">thinking</option>\n      <option value="working">working</option>\n      <option value="success">success</option>\n      <option value="error">error</option>\n    </select>\n    <input type="range" min="0" max="100" bind:value={progress} />\n  </div>\n</div>` },
+    ]);
 
     const filteredExamples = computed(() => {
-      let list = examples;
-      if (filter.value !== "all") list = list.filter((e) => e.tags.includes(filter.value));
-      const q = search.value.toLowerCase().trim();
-      if (q) list = list.filter((e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q) || e.category.toLowerCase().includes(q));
+      let list = examples.value;
+      if (filter.value !== 'all') list = list.filter((e) => e.category === filter.value);
+      if (search.value) {
+        const q = search.value.toLowerCase();
+        list = list.filter((e) => e.title.toLowerCase().includes(q) || e.description.toLowerCase().includes(q) || e.tags.includes(q));
+      }
       return list;
     });
 
-    async function copyCode(code, event) {
-      try {
-        await navigator.clipboard.writeText(code);
-        const btn = event.currentTarget;
-        const orig = btn.innerHTML;
-        btn.innerHTML = "Copied";
-        setTimeout(() => { btn.innerHTML = orig; }, 1200);
-      } catch { window.prompt("Copy:", code); }
+    function examplesByCategory(cat) {
+      return examples.value.filter((e) => e.category === cat);
     }
 
+    let eventIndex = 0;
+    const events = [
+      { type: 'patch', state: 'thinking', progress: 10, activity: 25 },
+      { type: 'patch', state: 'working', progress: 35, activity: 60 },
+      { type: 'patch', state: 'working', progress: 55, activity: 78 },
+      { type: 'patch', state: 'working', progress: 72, activity: 42 },
+      { type: 'patch', state: 'success', progress: 100, activity: 0 },
+      { type: 'patch', state: 'error', progress: 33, activity: 10 },
+    ];
+
     function applyPatch() {
-      playgroundState.status = status.value;
-      playgroundState.progress = progress.value / 100;
-      playgroundState.activity = activity.value / 100;
-      eventLog.value = `{ status: "${playgroundState.status}", progress: ${playgroundState.progress.toFixed(2)}, activity: ${playgroundState.activity.toFixed(2)} }`;
+      const entry = { status: status.value, progress: progress.value, activity: activity.value, time: new Date().toLocaleTimeString() };
+      eventLog.value = `> patch ${JSON.stringify(entry)}\n` + eventLog.value;
     }
 
     function nextEvent() {
       const e = events[eventIndex % events.length];
-      playgroundState.status = e.status;
-      playgroundState.progress = e.progress;
-      playgroundState.activity = e.activity;
-      status.value = e.status;
-      progress.value = Math.round(e.progress * 100);
-      activity.value = Math.round(e.activity * 100);
-      eventLog.value = `{ status: "${e.status}", progress: ${e.progress.toFixed(2)}, activity: ${e.activity.toFixed(2)} }`;
+      status.value = e.state;
+      progress.value = e.progress;
+      activity.value = e.activity;
+      eventLog.value = `> replay[${eventIndex % events.length}] ${e.type} → ${e.state} ${e.progress}%\n` + eventLog.value;
       eventIndex++;
     }
 
-    let raf;
-    function animate(now) {
-      playgroundState.phase += 0.016 * (0.8 + playgroundState.activity * 2);
-      const heroCanvas = document.querySelector("#hero-canvas");
-      if (heroCanvas && heroCanvas._ctx) drawAgent(heroCanvas._ctx, now / 1000, true);
-      const pgCanvas = document.querySelector("#playground-canvas");
-      if (pgCanvas && pgCanvas._ctx) drawAgent(pgCanvas._ctx, now / 1000);
-      document.querySelectorAll(".example-canvas").forEach((canvas) => {
-        if (!canvas._ctx) canvas._ctx = setupCanvas(canvas);
-        const type = canvas.dataset.visual;
-        if (canvas._ctx && type && renderers[type]) renderers[type](canvas._ctx, now / 1000);
+    function copyCode(code, event) {
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = event.target;
+        btn.classList.add('copied');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'Copy source'; }, 1600);
       });
-      raf = requestAnimationFrame(animate);
+    }
+
+    function openExample(ex) {
+      modalType.value = 'example';
+      modalExample.value = ex;
+      modalOpen.value = true;
+      nextTick(() => {
+        const canvases = document.querySelectorAll('.modal-canvas');
+        canvases.forEach((c) => drawCanvas(c, ex.id, performance.now(), { status: status.value, progress: progress.value }));
+      });
+    }
+
+    function openFramework(fw) {
+      modalType.value = 'framework';
+      modalFramework.value = fw;
+      modalOpen.value = true;
+      nextTick(() => {
+        const canvases = document.querySelectorAll('.integration-canvas-large');
+        canvases.forEach((c) => drawCanvas(c, 'fw_' + fw.id, performance.now(), { status: status.value, progress: progress.value }));
+      });
+    }
+
+    function closeModal() {
+      modalOpen.value = false;
+      modalExample.value = null;
+      modalFramework.value = null;
+    }
+
+    let mainRaf;
+    function animateAll(time) {
+      document.querySelectorAll('[data-visual]').forEach((canvas) => {
+        const visualId = canvas.getAttribute('data-visual');
+        if (canvas.id === 'playground-canvas') {
+          drawCanvas(canvas, 'playground', time, { status: status.value, progress: progress.value });
+        } else {
+          drawCanvas(canvas, visualId, time, { status: status.value, progress: progress.value });
+        }
+      });
+      mainRaf = requestAnimationFrame(animateAll);
     }
 
     onMounted(() => {
-      const heroCanvas = document.querySelector("#hero-canvas");
-      if (heroCanvas) heroCanvas._ctx = setupCanvas(heroCanvas);
-      const pgCanvas = document.querySelector("#playground-canvas");
-      if (pgCanvas) pgCanvas._ctx = setupCanvas(pgCanvas);
-      raf = requestAnimationFrame(animate);
+      mainRaf = requestAnimationFrame(animateAll);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalOpen.value) closeModal();
+      });
     });
 
-    onUnmounted(() => { if (raf) cancelAnimationFrame(raf); });
+    onUnmounted(() => {
+      cancelAnimationFrame(mainRaf);
+    });
 
-    return { filter, search, status, progress, activity, eventLog, examples, categories, frameworks, filteredExamples, examplesByCategory, copyCode, applyPatch, nextEvent };
+    return { status, progress, activity, filter, search, categories, examples, filteredExamples, frameworks, eventLog, modalOpen, modalType, modalExample, modalFramework, applyPatch, nextEvent, copyCode, openExample, openFramework, closeModal, examplesByCategory };
   },
-}).mount("#app");
-
-// ─── Hero/Playground ASCII Agent Renderer ───────────────────────────────────
-function drawAgent(ctx, now, compact = false) {
-  const w = ctx.canvas.width, h = ctx.canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, w, h);
-  const cx = w / 2, cy = h / 2;
-  const s = playgroundState;
-  // ASCII orbiting rings
-  drawAsciiRing(ctx, cx, cy, Math.min(w, h) * 0.32, now, 0.4, "::::::::::::::::::::");
-  drawAsciiRing(ctx, cx, cy, Math.min(w, h) * 0.22, now, -0.6, "::::::::::::");
-  drawAsciiRing(ctx, cx, cy, Math.min(w, h) * 0.12, now, 0.8, "::::::");
-  // Progress
-  const progress = s.progress;
-  const arcLen = Math.floor(progress * 24);
-  const arc = "#".repeat(arcLen) + ".".repeat(24 - arcLen);
-  asciiAt(ctx, `[${arc}]`, cx, cy + Math.min(w, h) * 0.38, 10, "#fff");
-  // Status
-  asciiAt(ctx, `status://${s.status}`, cx, cy + Math.min(w, h) * 0.44, 11, "#888");
-  asciiAt(ctx, `${Math.round(progress * 100)}%  .  activity ${Math.round(s.activity * 100)}%`, cx, cy + Math.min(w, h) * 0.48, 10, "#fff");
-  if (!compact) {
-    asciiAt(ctx, "AIGpu // agentAnimation()", cx, h - 16, 9, "#555");
-  }
-}
+}).mount('#app');
