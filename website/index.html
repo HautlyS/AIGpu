@@ -36,7 +36,7 @@
         </div>
         <div class="hero-orb" aria-label="Animated AIGpu status visual">
           <canvas id="hero-canvas" width="720" height="520"></canvas>
-          <div class="orb-label"><span class="orb-label-dot"></span><span id="hero-state">working</span><span class="orb-label-metric" id="hero-progress">72%</span></div>
+          <div class="orb-label"><span class="orb-label-dot"></span><span id="hero-state">{{ status }}</span><span class="orb-label-metric" id="hero-progress">{{ progress }}%</span></div>
         </div>
       </section>
 
@@ -47,17 +47,17 @@
           <div class="demo-stage">
             <div class="stage-toolbar"><span class="toolbar-title">agent-ops / live preview</span><span class="toolbar-status"><i></i> local simulation</span></div>
             <canvas id="playground-canvas" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
-            <div class="stage-footer"><span id="stage-status">working</span><span class="stage-progress"><span id="stage-progress-bar"></span></span><span id="stage-progress-label">72%</span></div>
+            <div class="stage-footer"><span id="stage-status">{{ status }}</span><span class="stage-progress"><span id="stage-progress-bar" :style="{ width: progress + '%' }"></span></span><span id="stage-progress-label">{{ progress }}%</span></div>
           </div>
           <aside class="control-panel">
             <p class="panel-kicker">Event bridge</p>
             <h3>Drive pixels with plain data</h3>
             <p class="muted">The controls below simulate the same patches your queue, worker, WebSocket, or model orchestrator can send.</p>
-            <div class="control-group"><label for="status-select">Status</label><select id="status-select"><option>idle</option><option>thinking</option><option selected>working</option><option>waiting</option><option>success</option><option>error</option></select></div>
-            <div class="control-group"><label for="progress-range">Progress <output id="progress-output">72%</output></label><input id="progress-range" type="range" min="0" max="100" value="72"></div>
-            <div class="control-group"><label for="activity-range">Activity <output id="activity-output">90%</output></label><input id="activity-range" type="range" min="0" max="100" value="90"></div>
-            <div class="control-actions"><button class="button button-primary button-full" id="apply-state">Apply patch</button><button class="button button-quiet button-full" id="next-event">Replay next event</button></div>
-            <pre class="event-log" id="event-log" aria-live="polite">{ status: "working", progress: 0.72 }</pre>
+            <div class="control-group"><label for="status-select">Status</label><select id="status-select" v-model="status"><option>idle</option><option>thinking</option><option>working</option><option>waiting</option><option>success</option><option>error</option></select></div>
+            <div class="control-group"><label for="progress-range">Progress <output id="progress-output">{{ progress }}%</output></label><input id="progress-range" type="range" min="0" max="100" v-model.number="progress"></div>
+            <div class="control-group"><label for="activity-range">Activity <output id="activity-output">{{ activity }}%</output></label><input id="activity-range" type="range" min="0" max="100" v-model.number="activity"></div>
+            <div class="control-actions"><button class="button button-primary button-full" @click="applyPatch">Apply patch</button><button class="button button-quiet button-full" @click="nextEvent">Replay next event</button></div>
+            <pre class="event-log" aria-live="polite">{{ eventLog }}</pre>
           </aside>
         </div>
       </section>
