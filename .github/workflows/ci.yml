@@ -106,7 +106,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Pack publishable packages
-        run: mkdir -p /tmp/aigpu-packages && pnpm -r pack --pack-destination /tmp/aigpu-packages
+        run: |
+          mkdir -p /tmp/aigpu-packages
+          for dir in packages/*/; do
+            if node -e "if (JSON.parse(require('fs').readFileSync('${dir}package.json','utf8')).private) process.exit(1)"; then
+              (cd "$dir" && pnpm pack --pack-destination /tmp/aigpu-packages)
+            fi
+          done
       - name: Inspect package archives
         run: |
           set -eu

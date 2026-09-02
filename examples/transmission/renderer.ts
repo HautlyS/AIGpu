@@ -98,7 +98,7 @@ export function createRenderer({ canvas, initialControls }: RendererOptions) {
   }
 
   const initialize = async () => {
-    const { init } = await import("AIGPU");
+    const { init } = await import("aigpu");
     if (disposed) return;
     const nextGpu = await init();
     if (disposed) {
