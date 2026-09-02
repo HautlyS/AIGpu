@@ -16,6 +16,7 @@
       <a class="brand" href="#top" aria-label="AIGpu home"><span class="brand-mark">A</span><span>AIGpu</span></a>
       <nav aria-label="Primary navigation">
         <a href="#showcase">Demo</a>
+        <a href="#hautly">Hautly</a>
         <a href="#examples">Examples</a>
         <a href="#integrations">Integrations</a>
         <a class="nav-cta" href="https://github.com/hautlys/AIGpu">Source</a>
@@ -100,9 +101,91 @@
         </div>
       </section>
 
+      <!-- HAUTLY ENTITY SECTION -->
+      <section id="hautly" class="section-shell section-block">
+        <div class="section-heading">
+          <div><p class="eyebrow">hautly entity</p><h2>An alive orb that lives in your terminal.</h2></div>
+          <p class="section-note">Hautly is an ASCII orb-spirit companion. Pick a form, watch it breathe, click it, talk to it. Connected to Opencode, Claude Code, and Codex.</p>
+        </div>
+        <div class="hautly-layout">
+          <div class="hautly-stage">
+            <div class="stage-toolbar">
+              <span class="toolbar-title">hautly / entity</span>
+              <span class="toolbar-status"><i></i> alive</span>
+            </div>
+            <div class="hautly-canvas-wrap" @mousemove="hautlyMouseMove" @mouseleave="hautlyMouseLeave" @click="hautlyClick">
+              <canvas id="hautly-canvas" width="800" height="480" aria-label="Hautly entity"></canvas>
+              <div class="hautly-speech-bubble" v-if="hautlySpeech" :class="{ typing: hautlyTyping }">
+                <span>{{ hautlySpeechVisible }}</span><span class="speech-cursor" v-if="hautlyTyping">_</span>
+              </div>
+            </div>
+            <div class="hautly-status-bar">
+              <span class="hautly-mood-badge" :class="'mood-' + hautlyMood">{{ hautlyMood }}</span>
+              <span class="hautly-form-label">{{ hautlyForm }}</span>
+              <span class="hautly-energy-bar"><span :style="{ width: (hautlyEnergy * 100) + '%' }"></span></span>
+              <span class="hautly-energy-val">{{ Math.round(hautlyEnergy * 100) }}%</span>
+            </div>
+          </div>
+          <div class="hautly-controls">
+            <p class="panel-kicker">// entity controls</p>
+            <h3>Make it alive</h3>
+            <div class="control-group">
+              <label>Form</label>
+              <div class="hautly-form-grid">
+                <button v-for="f in hautlyForms" :key="f" class="hautly-form-btn" :class="{ active: hautlyForm === f }" @click="hautlySetForm(f)">{{ f }}</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <label>Mood</label>
+              <div class="hautly-form-grid">
+                <button v-for="m in hautlyMoods" :key="m" class="hautly-mood-btn" :class="{ active: hautlyMood === m, ['mood-' + m]: true }" @click="hautlySetMood(m)">{{ m }}</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <label>Energy <output>{{ Math.round(hautlyEnergy * 100) }}%</output></label>
+              <input type="range" min="0" max="100" :value="hautlyEnergy * 100" @input="hautlyEnergy = $event.target.value / 100">
+            </div>
+            <div class="control-actions">
+              <button class="button button-primary button-full" @click="hautlySpeak">Say hello</button>
+              <button class="button button-quiet button-full" @click="hautlySimulateAgent">Simulate agent</button>
+            </div>
+            <div class="hautly-conversation">
+              <p class="panel-kicker">// mock conversation</p>
+              <div class="hautly-chat-log" v-for="(msg, i) in hautlyChatLog" :key="i" :class="msg.role">
+                <span class="chat-role">{{ msg.role === 'user' ? '>' : 'hautly' }}</span>
+                <span class="chat-text">{{ msg.text }}</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <label>Connected agents</label>
+              <div class="hautly-agent-tags">
+                <span class="agent-tag" v-for="a in ['opencode', 'claude-code', 'codex']" :key="a" :class="{ active: hautlyAgent === a }" @click="hautlyAgent = a">{{ a }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HAUTLY GALLERY -->
+      <section id="hautly-gallery" class="section-shell section-block">
+        <div class="section-heading">
+          <div><p class="eyebrow">entity gallery</p><h2>Every form. Every mood. Animated.</h2></div>
+          <p class="section-note">Click any entity to see it live. Each form has unique breathing, particles, and expression patterns.</p>
+        </div>
+        <div class="hautly-gallery-grid">
+          <div v-for="item in hautlyGallery" :key="item.form + '-' + item.mood" class="hautly-gallery-card" @mouseenter="hautlyGalleryHover(item, $event)" @mouseleave="hautlyGalleryLeave(item)">
+            <canvas class="hautly-gallery-canvas" :data-entity="item.form + '-' + item.mood" width="320" height="200"></canvas>
+            <div class="hautly-gallery-info">
+              <span class="hautly-gallery-form">{{ item.form }}</span>
+              <span class="hautly-gallery-mood" :class="'mood-' + item.mood">{{ item.mood }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="section-shell install-banner">
-        <div><p class="eyebrow">ready to build</p><h2>npm install aigpu</h2><p>Core + adapter only when needed. Application owns state.</p></div>
-        <div class="install-command"><code>npm install aigpu</code><button class="copy-trigger" @click="copyCode('npm install aigpu', $event)">Copy</button></div>
+        <div><p class="eyebrow">ready to build</p><h2>npm install aigpu @hautly/entity</h2><p>Core + Hautly entity + agent adapters. Application owns state.</p></div>
+        <div class="install-command"><code>npm install @hautly/entity</code><button class="copy-trigger" @click="copyCode('npm install @hautly/entity', $event)">Copy</button></div>
       </section>
     </main>
 

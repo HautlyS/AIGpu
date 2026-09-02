@@ -57,6 +57,7 @@ a {
 
 a:hover {
   color: var(--gray-2);
+  transition: color 0.15s;
 }
 
 h1,
@@ -135,6 +136,11 @@ p {
   background: transparent;
   color: var(--white);
   text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.button:active {
+  transform: scale(0.97);
 }
 
 .button-primary {
@@ -526,11 +532,13 @@ p {
   border: 1px solid var(--gray-5);
   background: var(--gray-7);
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .example-card:hover {
   border-color: var(--gray-3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.04);
 }
 
 .example-canvas {
@@ -612,11 +620,13 @@ p {
   background: var(--gray-7);
   padding: 20px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .integration-card:hover {
   border-color: var(--gray-3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.04);
 }
 
 .card-index {
@@ -702,6 +712,303 @@ p {
   padding: 48px;
   color: var(--gray-4);
   font-size: 0.9rem;
+}
+
+/* ==================== HAUTLY ENTITY ==================== */
+
+.hautly-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.hautly-stage {
+  border: 1px solid var(--gray-5);
+  background: var(--gray-7);
+}
+
+.hautly-canvas-wrap {
+  position: relative;
+  cursor: crosshair;
+  overflow: hidden;
+}
+
+#hautly-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  transition: filter 0.3s;
+}
+
+.hautly-canvas-wrap:hover #hautly-canvas {
+  filter: brightness(1.08);
+}
+
+.hautly-speech-bubble {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 10, 20, 0.88);
+  border: 1px solid rgba(100, 200, 255, 0.3);
+  border-radius: 8px;
+  padding: 10px 16px;
+  max-width: 70%;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: #c8e8ff;
+  line-height: 1.5;
+  pointer-events: none;
+  animation: speechIn 0.25s ease-out;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.08);
+}
+
+.hautly-speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid rgba(100, 200, 255, 0.3);
+}
+
+.hautly-speech-bubble.typing {
+  border-color: rgba(100, 200, 255, 0.5);
+}
+
+.speech-cursor {
+  animation: blink 0.6s step-end infinite;
+  color: #64c8ff;
+}
+
+@keyframes speechIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.hautly-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--gray-5);
+  font-size: 0.72rem;
+  color: var(--gray-3);
+}
+
+.hautly-mood-badge {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mood-idle { background: rgba(100, 200, 255, 0.15); color: #64c8ff; }
+.mood-listening { background: rgba(100, 255, 180, 0.15); color: #64ffb4; }
+.mood-thinking { background: rgba(180, 140, 255, 0.15); color: #b48cff; }
+.mood-speaking { background: rgba(255, 200, 80, 0.15); color: #ffc850; }
+.mood-excited { background: rgba(255, 100, 120, 0.15); color: #ff6478; }
+.mood-sleepy { background: rgba(120, 140, 180, 0.15); color: #788cb4; }
+.mood-error { background: rgba(255, 60, 60, 0.15); color: #ff3c3c; }
+.mood-healing { background: rgba(100, 255, 150, 0.15); color: #64ff96; }
+
+.hautly-form-label {
+  color: var(--gray-4);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hautly-energy-bar {
+  flex: 1;
+  height: 3px;
+  background: var(--gray-5);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hautly-energy-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #64c8ff, #b48cff);
+  transition: width 0.3s;
+  border-radius: 2px;
+}
+
+.hautly-energy-val {
+  color: var(--gray-3);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Hautly Controls */
+.hautly-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hautly-form-btn,
+.hautly-mood-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--gray-5);
+  background: transparent;
+  color: var(--gray-3);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.hautly-form-btn:hover,
+.hautly-mood-btn:hover {
+  border-color: var(--gray-3);
+  color: var(--white);
+}
+
+.hautly-form-btn.active {
+  background: var(--white);
+  color: var(--black);
+  border-color: var(--white);
+}
+
+.hautly-mood-btn.active {
+  border-color: var(--white);
+  color: var(--white);
+}
+
+.hautly-mood-btn.active.mood-idle { background: rgba(100, 200, 255, 0.2); border-color: #64c8ff; }
+.hautly-mood-btn.active.mood-thinking { background: rgba(180, 140, 255, 0.2); border-color: #b48cff; }
+.hautly-mood-btn.active.mood-speaking { background: rgba(255, 200, 80, 0.2); border-color: #ffc850; }
+.hautly-mood-btn.active.mood-excited { background: rgba(255, 100, 120, 0.2); border-color: #ff6478; }
+.hautly-mood-btn.active.mood-error { background: rgba(255, 60, 60, 0.2); border-color: #ff3c3c; }
+.hautly-mood-btn.active.mood-healing { background: rgba(100, 255, 150, 0.2); border-color: #64ff96; }
+
+/* Hautly Conversation */
+.hautly-conversation {
+  margin-top: 16px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.hautly-chat-log {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  animation: chatIn 0.2s ease-out;
+}
+
+.hautly-chat-log.user { color: var(--gray-2); }
+.hautly-chat-log.hautly { color: #64c8ff; }
+
+.chat-role {
+  color: var(--gray-4);
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.chat-text {
+  color: inherit;
+}
+
+@keyframes chatIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hautly-agent-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-tag {
+  padding: 4px 10px;
+  border: 1px solid var(--gray-5);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: var(--gray-4);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.agent-tag:hover {
+  border-color: var(--gray-3);
+  color: var(--gray-2);
+}
+
+.agent-tag.active {
+  background: rgba(100, 200, 255, 0.1);
+  border-color: #64c8ff;
+  color: #64c8ff;
+}
+
+/* Hautly Gallery */
+.hautly-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.hautly-gallery-card {
+  border: 1px solid var(--gray-5);
+  background: var(--gray-7);
+  cursor: pointer;
+  transition: all 0.2s;
+  overflow: hidden;
+}
+
+.hautly-gallery-card:hover {
+  border-color: #64c8ff;
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.hautly-gallery-canvas {
+  width: 100%;
+  height: 140px;
+  display: block;
+  background: var(--black);
+}
+
+.hautly-gallery-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--gray-5);
+}
+
+.hautly-gallery-form {
+  font-size: 0.75rem;
+  color: var(--gray-3);
+  text-transform: capitalize;
+}
+
+.hautly-gallery-mood {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+@media (max-width: 900px) {
+  .hautly-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .hautly-gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
 }
 
 /* Responsive */

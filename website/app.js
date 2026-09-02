@@ -589,6 +589,173 @@ const asciiSine = (ctx, w, h, t) => {
   ctx.fillText(`freq: ${(1 + Math.sin(t * 0.3) * 0.5).toFixed(2)} Hz`, 10, 16);
 };
 
+/* ==================== HAUTLY ENTITY RENDERERS ==================== */
+
+const hautlyNoise = (x, y, s) => {
+  const n = Math.sin(x * 12.9898 + y * 78.233 + s * 43.5453) * 43758.5453;
+  return n - Math.floor(n);
+};
+
+const hautlySmoothNoise = (x, y, t) => {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const a = hautlyNoise(ix, iy, t), b = hautlyNoise(ix + 1, iy, t);
+  const c = hautlyNoise(ix, iy + 1, t), d = hautlyNoise(ix + 1, iy + 1, t);
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+};
+
+const HAUTLY_MOOD_COLORS = {
+  idle:      { core: [100, 200, 255], ring: [60, 120, 200],  aura: [30, 80, 160],   eye: [255, 255, 255], particle: [150, 200, 255] },
+  listening: { core: [120, 220, 180], ring: [60, 180, 120],  aura: [30, 100, 60],   eye: [255, 255, 200], particle: [150, 255, 200] },
+  thinking:  { core: [180, 140, 255], ring: [120, 80, 220],  aura: [80, 40, 160],   eye: [255, 240, 255], particle: [200, 160, 255] },
+  speaking:  { core: [255, 200, 80],  ring: [220, 160, 40],  aura: [160, 100, 20],  eye: [255, 255, 220], particle: [255, 220, 120] },
+  excited:   { core: [255, 100, 120], ring: [255, 60, 80],   aura: [200, 30, 50],   eye: [255, 255, 255], particle: [255, 150, 160] },
+  sleepy:    { core: [120, 140, 180], ring: [80, 100, 140],  aura: [50, 60, 90],    eye: [180, 200, 220], particle: [100, 120, 160] },
+  error:     { core: [255, 60, 60],   ring: [200, 30, 30],   aura: [150, 20, 20],   eye: [255, 200, 200], particle: [255, 100, 100] },
+  healing:   { core: [100, 255, 150], ring: [60, 200, 100],  aura: [30, 150, 60],   eye: [220, 255, 230], particle: [150, 255, 180] },
+};
+
+const HAUTLY_PARTICLE_CHARS = {
+  idle: ['.', '+', '~'], listening: ['o', 'O', '.'], thinking: ['?', '.', '\u00b7'],
+  speaking: ['~', '!', '*'], excited: ['*', '!', '+', '#'], sleepy: ['z', 'Z', '.'],
+  error: ['!', 'x', '#'], healing: ['+', '*', 'o'],
+};
+
+const HAUTLY_FORM_CHARS = {
+  idle: ' .,:;i1tfLCG08#',
+  thinking: ' \u00b7\u2236:\u2591\u2592\u2593\u2588',
+  speaking: ' .oO0@*#',
+  excited: ' *+.#@%&',
+  sleepy: ' .\u00b7\u00b7::---',
+  error: ' !@#$%^&',
+  healing: ' +*.:oO@',
+};
+
+let hautlyMouseX = 0, hautlyMouseY = 0, hautlyMouseOver = false;
+
+function drawHautlyOrb(ctx, w, h, t, state) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.28;
+  const breathScale = 1 + Math.sin(t * 1.2 * Math.PI * 2) * 0.04;
+  const pulse = Math.pow(Math.sin(t * Math.PI * 2) * 0.5 + 0.5, 3);
+  const colors = HAUTLY_MOOD_COLORS[state.mood] || HAUTLY_MOOD_COLORS.idle;
+
+  // Mouse attraction
+  let mx = 0, my = 0;
+  if (hautlyMouseOver) {
+    const mdx = (hautlyMouseX - cx) / r;
+    const mdy = (hautlyMouseY - cy) / r;
+    const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+    if (mdist > 0.01) {
+      mx = (mdx / mdist) * Math.min(0.06, mdist * 0.03);
+      my = (mdy / mdist) * Math.min(0.06, mdist * 0.03);
+    }
+  }
+
+  // Eye direction based on mouse
+  let eyeOffX = mx * 2, eyeOffY = my * 2;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = (x - cx) / (r * breathScale) + mx;
+      const dy = (y - cy) / (r * breathScale) + my;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx);
+
+      // Core orb
+      if (dist < 1.0) {
+        // Eyes
+        const eyeY = -0.05;
+        const eyeSize = 0.08;
+        if (Math.abs(dy - eyeY) < eyeSize && dist < 0.4) {
+          const le = Math.abs(dx - 0.15) < 0.1;
+          const re = Math.abs(dx + 0.15) < 0.1;
+          if (le || re) {
+            const ex = le ? 0.15 : -0.15;
+            const inPupil = Math.abs(dx - ex - eyeOffX * 0.04) < 0.035 && Math.abs(dy - eyeY - eyeOffY * 0.04) < 0.035;
+            if (inPupil) {
+              ctx.fillStyle = `rgb(0,0,0)`;
+              ctx.fillRect(x, y, 1, 1);
+              continue;
+            }
+            ctx.fillStyle = `rgba(${colors.eye.join(',')}, 0.9)`;
+            ctx.fillRect(x, y, 1, 1);
+            continue;
+          }
+        }
+
+        // Ring
+        const ringDist = Math.abs(dist - 0.82);
+        if (ringDist < 0.06) {
+          const ci = Math.floor(((angle / Math.PI + 1) * 0.5 + t * 0.5) * 10) % 10;
+          const ch = '\u00b7:;|=+*#%@'[ci];
+          ctx.fillStyle = `rgba(${colors.ring.join(',')}, 0.8)`;
+          ctx.font = `${Math.max(8, Math.floor(r * 0.06))}px monospace`;
+          ctx.fillText(ch, x, y);
+          continue;
+        }
+
+        // Core body
+        const glow = Math.pow(1 - dist, 0.5);
+        const ci = Math.floor(glow * (HAUTLY_FORM_CHARS[state.mood] || HAUTLY_FORM_CHARS.idle).length * 0.8);
+        const chars = HAUTLY_FORM_CHARS[state.mood] || HAUTLY_FORM_CHARS.idle;
+        const ch = chars[Math.min(ci, chars.length - 1)];
+        const intensity = 0.3 + glow * 0.5 + pulse * 0.2;
+        ctx.fillStyle = `rgba(${colors.core.join(',')}, ${intensity})`;
+        ctx.font = `${Math.max(7, Math.floor(r * 0.055))}px monospace`;
+        ctx.fillText(ch, x, y);
+        continue;
+      }
+
+      // Outer glow / aura
+      if (dist < 1.7) {
+        const auraAlpha = Math.max(0, 1 - (dist - 1.0) / 0.7) * (0.3 + Math.sin(t * 1.2 * Math.PI * 2) * 0.2);
+        const n = hautlySmoothNoise(x * 0.15, y * 0.15, t * 0.6);
+        if (n < auraAlpha * 0.7) {
+          const ci = Math.floor(n * 5);
+          ctx.fillStyle = `rgba(${colors.aura.join(',')}, ${auraAlpha * 0.6})`;
+          ctx.font = `${Math.max(7, Math.floor(r * 0.04))}px monospace`;
+          ctx.fillText('\u00b7.:*+'[ci], x, y);
+          continue;
+        }
+      }
+
+      // Particles orbiting
+      for (let p = 0; p < 12; p++) {
+        const pa = (p / 12) * Math.PI * 2 + t * (0.3 + p * 0.05);
+        const pr = 1.1 + Math.sin(t * 0.8 + p) * 0.15;
+        const px = cx + Math.cos(pa) * pr * r - mx * r;
+        const py = cy + Math.sin(pa) * pr * r - my * r;
+        if (Math.abs(x - px) < 1.2 && Math.abs(y - py) < 1.2) {
+          const pchars = HAUTLY_PARTICLE_CHARS[state.mood] || HAUTLY_PARTICLE_CHARS.idle;
+          ctx.fillStyle = `rgba(${colors.particle.join(',')}, ${0.3 + Math.abs(Math.sin(t + p * 0.5)) * 0.5})`;
+          ctx.font = `${9 + (p % 3)}px monospace`;
+          ctx.fillText(pchars[p % pchars.length], x, y);
+          break;
+        }
+      }
+    }
+  }
+}
+
+const HAUTLY_MOCK_RESPONSES = [
+  "I see you're working on something interesting!",
+  "The code looks clean. Nice patterns.",
+  "I'm analyzing the structure...",
+  "Found 3 potential improvements.",
+  "Ready to help when you need me.",
+  "That's a clever approach to the problem.",
+  "I notice the imports could be optimized.",
+  "The type safety here is solid.",
+  "Want me to review the tests?",
+  "This architecture scales well.",
+];
+
 /* ==================== CANVAS MAP ==================== */
 
 const drawCanvas = (canvas, rendererId, time, state) => {
@@ -597,7 +764,7 @@ const drawCanvas = (canvas, rendererId, time, state) => {
   if (!ctx) return;
   const t = time * 0.001;
   const renderers = {
-    hero: () => asciiRings(ctx, w, h, t, state.status),
+    hero: () => drawHautlyOrb(ctx, w, h, t, { mood: state.status === 'working' ? 'speaking' : state.status === 'thinking' ? 'thinking' : state.status === 'success' ? 'excited' : state.status === 'error' ? 'error' : 'idle', form: 'orb' }),
     playground: () => asciiWave(ctx, w, h, t, ':;|=+*#%@'),
     s02_fullscreen: () => asciiWave(ctx, w, h, t, '.:;-=+*#%@'),
     s03_sharing: () => asciiWireCube(ctx, w, h, t),
@@ -660,6 +827,7 @@ const drawCanvas = (canvas, rendererId, time, state) => {
     vgpu_depth: () => asciiDepthMap(ctx, w, h, t),
     vgpu_mnist: () => asciiGrid(ctx, w, h, t, { cols: 12, rows: 12, chars: '0123456789' }),
     vgpu_particle_orbit: () => asciiSpiral(ctx, w, h, t),
+    hautly: () => drawHautlyOrb(ctx, w, h, t, { mood: 'idle', form: 'orb' }),
   };
   const renderer = renderers[rendererId];
   if (renderer) renderer();
@@ -680,9 +848,162 @@ createApp({
     const modalExample = ref(null);
     const modalFramework = ref(null);
 
+    // Hautly entity state
+    const hautlyMood = ref('idle');
+    const hautlyForm = ref('orb');
+    const hautlyEnergy = ref(0.5);
+    const hautlySpeech = ref('');
+    const hautlySpeechVisible = ref('');
+    const hautlyTyping = ref(false);
+    const hautlyAgent = ref('opencode');
+    const hautlyChatLog = ref([
+      { role: 'hautly', text: 'Hello! I am Hautly, your alive orb companion. Click me or pick a mood.' },
+    ]);
+    let hautlyTypeTimer = null;
+    let hautlySpeechTimer = null;
+
+    const hautlyForms = ['orb', 'crystal', 'jelly', 'phoenix', 'nebula'];
+    const hautlyMoods = ['idle', 'listening', 'thinking', 'speaking', 'excited', 'sleepy', 'error', 'healing'];
+
+    // Hautly gallery items
+    const hautlyGallery = computed(() => {
+      const items = [];
+      for (const form of hautlyForms) {
+        for (const mood of ['idle', 'thinking', 'speaking', 'excited']) {
+          items.push({ form, mood });
+        }
+      }
+      return items;
+    });
+
+    function hautlySetForm(f) {
+      hautlyForm.value = f;
+    }
+
+    function hautlySetMood(m) {
+      hautlyMood.value = m;
+    }
+
+    function hautlySpeak() {
+      const msgs = [
+        "Hello! I'm alive and breathing.",
+        "The codebase looks great today.",
+        "I'm tracking your mouse cursor!",
+        "Ready to assist with anything.",
+        "GPU-accelerated ASCII art at your service.",
+      ];
+      const msg = msgs[Math.floor(Math.random() * msgs.length)];
+      hautlyShowSpeech(msg);
+      hautlyChatLog.value.push({ role: 'user', text: msg });
+      setTimeout(() => {
+        const reply = HAUTLY_MOCK_RESPONSES[Math.floor(Math.random() * HAUTLY_MOCK_RESPONSES.length)];
+        hautlyShowSpeech(reply);
+        hautlyChatLog.value.push({ role: 'hautly', text: reply });
+        // Keep chat log manageable
+        if (hautlyChatLog.value.length > 12) hautlyChatLog.value.shift();
+      }, 1200);
+    }
+
+    function hautlyShowSpeech(text) {
+      clearTimeout(hautlyTypeTimer);
+      clearTimeout(hautlySpeechTimer);
+      hautlySpeech.value = text;
+      hautlySpeechVisible.value = '';
+      hautlyTyping.value = true;
+      let i = 0;
+      function typeChar() {
+        if (i < text.length) {
+          hautlySpeechVisible.value = text.slice(0, i + 1);
+          i++;
+          hautlyTypeTimer = setTimeout(typeChar, 25 + Math.random() * 20);
+        } else {
+          hautlyTyping.value = false;
+          hautlySpeechTimer = setTimeout(() => { hautlySpeech.value = ''; }, 4000);
+        }
+      }
+      typeChar();
+    }
+
+    function hautlySimulateAgent() {
+      const events = [
+        { mood: 'thinking', text: 'Analyzing codebase...' },
+        { mood: 'speaking', text: 'Found 5 files to review.' },
+        { mood: 'excited', text: 'Refactoring complete!' },
+        { mood: 'idle', text: 'Ready for next task.' },
+      ];
+      let i = 0;
+      function nextEvent() {
+        if (i >= events.length) return;
+        const ev = events[i];
+        hautlyMood.value = ev.mood;
+        hautlyShowSpeech(ev.text);
+        hautlyChatLog.value.push({ role: 'hautly', text: ev.text });
+        i++;
+        setTimeout(nextEvent, 2500);
+      }
+      hautlyChatLog.value.push({ role: 'user', text: 'Run agent simulation' });
+      nextEvent();
+    }
+
+    function hautlyMouseMove(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      hautlyMouseX = ((e.clientX - rect.left) / rect.width) * 800;
+      hautlyMouseY = ((e.clientY - rect.top) / rect.height) * 480;
+      hautlyMouseOver = true;
+    }
+
+    function hautlyMouseLeave() {
+      hautlyMouseOver = false;
+    }
+
+    function hautlyClick() {
+      const clickMsgs = [
+        "*bloop* That tickles!",
+        "I'm here! What do you need?",
+        "Click detected. Energy boosted!",
+        "Hello, human!",
+        "My particles are dancing!",
+      ];
+      const msg = clickMsgs[Math.floor(Math.random() * clickMsgs.length)];
+      hautlyShowSpeech(msg);
+      hautlyEnergy.value = Math.min(1, hautlyEnergy.value + 0.1);
+      // Brief excited flash
+      const prev = hautlyMood.value;
+      hautlyMood.value = 'excited';
+      setTimeout(() => { hautlyMood.value = prev; }, 800);
+    }
+
+    // Gallery hover animation loop
+    let galleryAnimFrame = 0;
+    function hautlyGalleryHover(item, e) {
+      const canvas = e.currentTarget.querySelector('.hautly-gallery-canvas');
+      if (!canvas) return;
+      canvas.setAttribute('data-animating', 'true');
+      const ctx = canvas.getContext('2d');
+      const startTime = performance.now();
+      function animate() {
+        if (canvas.matches(':hover')) {
+          const t = (performance.now() - startTime) / 1000;
+          drawHautlyOrb(ctx, 320, 200, t, { mood: item.mood, form: item.form });
+          galleryAnimFrame = requestAnimationFrame(animate);
+        } else {
+          canvas.removeAttribute('data-animating');
+        }
+      }
+      animate();
+    }
+
+    function hautlyGalleryLeave(item) {
+      cancelAnimationFrame(galleryAnimFrame);
+      document.querySelectorAll('.hautly-gallery-canvas[data-animating]').forEach(c => {
+        c.removeAttribute('data-animating');
+      });
+    }
+
     const categories = [
       { id: 'gpu_core', label: 'GPU Core' },
       { id: 'agent', label: 'Agent' },
+      { id: 'hautly', label: 'Hautly Entity' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'gpu_extra', label: 'GPU Extras' },
       { id: 'vgpu_gallery', label: 'vgpu Gallery' },
@@ -721,6 +1042,13 @@ createApp({
       { id: 'lava', title: 'Lava: procedural fire flow', category: 'advanced', tags: 'lava fire procedural flow', description: 'Procedural lava with turbulent flow and heat dissipation.', code: `import { gpu, pingPong, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst N = 256\nconst heat = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\nconst time = Uniform(gpuCtx.device, { size: 16 })\n\nconst lavaShader = \`@group(0) @binding(0) var tex: texture_2d<f32>;\n@group(0) @binding(1) var samp: sampler;\n@group(0) @binding(2) var<uniform> time: f32;\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  let h = textureSample(tex, samp, uv).r;\n  let flow = fbm(uv * 3.0 + vec2f(time * 0.1, -time * 0.2));\n  let temp = h + flow * 0.3;\n  let r = smoothstep(0.2, 0.8, temp);\n  let g = smoothstep(0.4, 0.9, temp) * 0.5;\n  let b = smoothstep(0.6, 1.0, temp) * 0.2;\n  return vec4f(r, g, b, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/lava/renderer.ts' },
       { id: 'mesh_edit', title: 'Mesh editor', category: 'advanced', tags: 'mesh editor vertices edges', description: 'Interactive mesh editor with vertex manipulation on the GPU.', code: `import { createApp, ref } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const vertices = ref([\n      { x: 0, y: 0, z: 0 },\n      { x: 1, y: 0, z: 0 },\n      { x: 0.5, y: 1, z: 0 },\n    ])\n    const edges = ref([[0, 1], [1, 2], [2, 0]])\n    const selected = ref(-1)\n\n    function selectVertex(i) { selected.value = i }\n    function moveSelected(dx, dy) {\n      if (selected.value >= 0) {\n        vertices.value[selected.value].x += dx\n        vertices.value[selected.value].y += dy\n      }\n    }\n\n    return { vertices, edges, selected, selectVertex, moveSelected }\n  }\n}).mount('#mesh')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/mesh_edit/renderer.ts' },
       { id: 'dom_mount', title: 'DOM mount: hybrid rendering', category: 'advanced', tags: 'dom mount hybrid html', description: 'Hybrid GPU + DOM rendering with CSS transform overlays.', code: `import { createApp, ref, onMounted } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const overlays = ref([])\n    const canvasRef = ref(null)\n\n    onMounted(() => {\n      const canvas = canvasRef.value\n      const gpuCtx = gpu()\n      gpuCtx.configure({ canvas })\n\n      // GPU renders base layer\n      // DOM overlays positioned via CSS transforms\n      function updateOverlays() {\n        const state = getState()\n        overlays.value = state.particles.map(p => ({\n          x: p.x, y: p.y,\n          label: p.label,\n          style: { transform: \`translate(\${p.x}px, \${p.y}px)\` }\n        }))\n      }\n    })\n\n    return { overlays, canvasRef }\n  }\n}).mount('#dom')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/dom_mount/renderer.ts' },
+
+      // ==================== HAUTLY ENTITY EXAMPLES ====================
+      { id: 'hautly_orb', title: 'Hautly Orb: alive companion', category: 'hautly', tags: 'hautly orb companion ascii alive', description: 'The core Hautly orb entity with breathing, eye tracking, and particle aura. Click to interact.', code: `import { hautlyWeb } from '@hautly/entity/web'\n\nconst h = hautlyWeb({\n  target: '#app',\n  form: 'orb',\n  initial: { mood: 'idle', energy: 0.5 },\n  interactive: true,\n  onClick: (engine) => {\n    engine.set({ mood: 'excited' });\n    h.say('Hello! Click detected.');\n    setTimeout(() => engine.set({ mood: 'idle' }), 1000);\n  },\n});\n\n// React to state changes\nh.update({ mood: 'thinking', energy: 0.8 });\nh.say('I am analyzing your code...');`, source: 'https://github.com/hautlys/AIGpu/blob/main/packages/hautly-entity/src/hautly-core.ts' },
+      { id: 'hautly_terminal', title: 'Hautly Terminal: ANSI companion', category: 'hautly', tags: 'hautly terminal ansi linux windows', description: 'Hautly running in any ANSI terminal. Works on Linux, macOS, and Windows Terminal.', code: `import { hautlyTerminal } from '@hautly/entity/terminal'\n\nconst h = await hautlyTerminal({\n  form: 'orb',\n  mood: 'idle',\n  fps: 15,\n});\n\nh.say('Hello from the terminal!');\nh.update({ mood: 'thinking' });\n\n// Connect to an agent\nh.say('Waiting for agent events...');`, source: 'https://github.com/hautlys/AIGpu/blob/main/packages/hautly-entity/src/hautly-terminal.ts' },
+      { id: 'hautly_crystal', title: 'Hautly Crystal: faceted entity', category: 'hautly', tags: 'hautly crystal faceted refraction', description: 'Crystal form with faceted surfaces and internal refraction patterns.', code: `import { hautlyWeb } from '@hautly/entity/web'\n\nconst h = hautlyWeb({\n  target: '#app',\n  form: 'crystal',\n  initial: { mood: 'thinking' },\n});\n\n// Crystal reacts to mood changes\nh.update({ mood: 'excited' });\nsetTimeout(() => h.update({ mood: 'idle' }), 2000);`, source: 'https://github.com/hautlys/AIGpu/blob/main/packages/hautly-entity/src/hautly-renderers.ts' },
+      { id: 'hautly_agent', title: 'Hautly + Opencode: coding companion', category: 'hautly', tags: 'hautly opencode claude codex agent companion', description: 'Hautly connected as a living companion to coding agents via native adapters.', code: `import { createTerminalHautly } from '@hautly/entity/terminal'\nimport { createOpencodeAdapter } from '@hautly/entity/agents'\n\nconst h = createTerminalHautly({ form: 'orb' });\nconst adapter = createOpencodeAdapter({ engine: h.engine });\n\n// Hautly reacts to every agent event\nadapter.emit({ agentId: 'op', type: 'thinking', message: 'Analyzing...' });\nadapter.emit({ agentId: 'op', type: 'tool:call', tool: 'read_file' });\nadapter.emit({ agentId: 'op', type: 'message:assistant', message: 'Done!' });\n\nconst stop = h.start();`, source: 'https://github.com/hautlys/AIGpu/blob/main/packages/hautly-entity/src/hautly-agents.ts' },
+      { id: 'hautly_vue', title: 'Hautly Vue: reactive entity', category: 'hautly', tags: 'hautly vue svelte react framework', description: 'Hautly as a Vue 3 component with reactive state binding.', code: `<!-- HautlyEntity.vue -->\n<script setup>\nimport { ref } from 'vue'\nimport { HautlyEntity } from '@hautly/entity/vue'\n\nconst mood = ref('idle')\nconst energy = ref(0.5)\n\nfunction click() {\n  mood.value = 'excited'\n  energy.value = Math.min(1, energy.value + 0.2)\n  setTimeout(() => mood.value = 'idle', 1000)\n}\n</script>\n\n<template>\n  <HautlyEntity\n    form="orb"\n    :mood="mood"\n    :energy="energy"\n    :width="400"\n    :height="300"\n    @click="click"\n  />\n</template>`, source: 'https://github.com/hautlys/AIGpu/blob/main/packages/hautly-entity/src/hautly-vue.ts' },
 
       // ==================== vgpu GALLERY EXAMPLES ====================
       { id: 'vgpu_gradient', title: 'Simple Gradient', category: 'vgpu_gallery', tags: 'gradient fragment shader vignette', description: 'Map screen coordinates to color with a tiny fullscreen fragment shader.', code: `// vgpu original: gradient example\nimport { effect, frameLoop, init, surface } from 'aigpu'\nimport fragment from './shader.wgsl'\n\nexport async function createRenderer(canvas: HTMLCanvasElement) {\n  const gpu = await init()\n  const output = surface(gpu, canvas, { dpr: [1, 2] })\n  const shader = effect(gpu, fragment)\n  frameLoop(gpu, (currentFrame) => currentFrame.pass(output, shader))\n  return { dispose: () => gpu.dispose() }\n}\n\n// shader.wgsl\n@fragment\nfn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let vignette = smoothstep(1.2, 0.2, distance(uv, vec2f(0.5)));\n  return vec4f(uv.x, uv.y, 0.46 + 0.16 * vignette, 1.0);\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/gradient' },
@@ -829,6 +1157,7 @@ createApp({
 
     let mainRaf;
     function animateAll(time) {
+      // Existing data-visual canvases
       document.querySelectorAll('[data-visual]').forEach((canvas) => {
         const visualId = canvas.getAttribute('data-visual');
         if (canvas.id === 'playground-canvas') {
@@ -837,6 +1166,29 @@ createApp({
           drawCanvas(canvas, visualId, time, { status: status.value, progress: progress.value });
         }
       });
+
+      // Hautly main entity canvas
+      const hautlyCanvas = document.getElementById('hautly-canvas');
+      if (hautlyCanvas) {
+        const ctx = hautlyCanvas.getContext('2d');
+        if (ctx) {
+          const t = time / 1000;
+          drawHautlyOrb(ctx, 800, 480, t, { mood: hautlyMood.value, form: hautlyForm.value });
+        }
+      }
+
+      // Hautly gallery canvases (only animate on hover for performance)
+      document.querySelectorAll('.hautly-gallery-canvas:not([data-animating])').forEach((canvas) => {
+        const entity = canvas.getAttribute('data-entity');
+        if (!entity) return;
+        const [form, mood] = entity.split('-');
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Draw a static initial frame
+          drawHautlyOrb(ctx, 320, 200, 0, { mood, form });
+        }
+      });
+
       mainRaf = requestAnimationFrame(animateAll);
     }
 
@@ -851,6 +1203,14 @@ createApp({
       cancelAnimationFrame(mainRaf);
     });
 
-    return { status, progress, activity, filter, search, categories, examples, filteredExamples, frameworks, eventLog, modalOpen, modalType, modalExample, modalFramework, applyPatch, nextEvent, copyCode, openExample, openFramework, closeModal, examplesByCategory };
+    return {
+      status, progress, activity, filter, search, categories, examples, filteredExamples,
+      frameworks, eventLog, modalOpen, modalType, modalExample, modalFramework,
+      applyPatch, nextEvent, copyCode, openExample, openFramework, closeModal, examplesByCategory,
+      hautlyMood, hautlyForm, hautlyEnergy, hautlySpeech, hautlySpeechVisible, hautlyTyping,
+      hautlyAgent, hautlyChatLog, hautlyForms, hautlyMoods, hautlyGallery,
+      hautlySetForm, hautlySetMood, hautlySpeak, hautlySimulateAgent,
+      hautlyMouseMove, hautlyMouseLeave, hautlyClick, hautlyGalleryHover, hautlyGalleryLeave,
+    };
   },
 }).mount('#app');

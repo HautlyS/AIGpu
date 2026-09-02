@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hautly Companion — Web</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    h1 {
+      font-size: 1.2rem;
+      color: #64c8ff;
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.1em;
+    }
+    .subtitle {
+      font-size: 0.75rem;
+      color: #555;
+      margin-bottom: 2rem;
+    }
+    #entity-container {
+      position: relative;
+      width: 640px;
+      height: 360px;
+      border: 1px solid #1a1a2e;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    #entity-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      background: #1a1a2e;
+      color: #64c8ff;
+      border: 1px solid #2a2a4e;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    button:hover { background: #2a2a4e; border-color: #64c8ff; }
+    button.active { background: #64c8ff; color: #0a0a0f; }
+    .agent-select {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .event-log {
+      width: 640px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #0d0d14;
+      border: 1px solid #1a1a2e;
+      border-radius: 4px;
+      padding: 0.75rem;
+      font-size: 0.7rem;
+      color: #666;
+    }
+    .event-log .event { margin-bottom: 0.25rem; }
+    .event-log .event-type { color: #64c8ff; }
+    .event-log .event-msg { color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Hautly Companion</h1>
+  <p class="subtitle">alive ASCII orb-spirit — connected to coding agents</p>
+
+  <div id="entity-container">
+    <canvas id="entity-canvas"></canvas>
+  </div>
+
+  <div class="agent-select">
+    <button class="active" data-agent="opencode">Opencode</button>
+    <button data-agent="claude-code">Claude Code</button>
+    <button data-agent="codex">Codex</button>
+    <button data-agent="auto">Auto-detect</button>
+  </div>
+
+  <div class="controls">
+    <button data-mood="idle">Idle</button>
+    <button data-mood="thinking">Thinking</button>
+    <button data-mood="speaking">Speaking</button>
+    <button data-mood="excited">Excited</button>
+    <button data-mood="error">Error</button>
+    <button data-mood="healing">Healing</button>
+  </div>
+
+  <div class="controls">
+    <button id="btn-speak">Speak</button>
+    <button id="btn-simulate">Simulate Agent</button>
+    <button id="btn-form-orb" class="active">Orb</button>
+    <button id="btn-form-crystal">Crystal</button>
+    <button id="btn-form-jelly">Jelly</button>
+    <button id="btn-form-phoenix">Phoenix</button>
+  </div>
+
+  <div class="event-log" id="event-log">
+    <div class="event"><span class="event-type">init</span> <span class="event-msg">Hautly companion ready</span></div>
+  </div>
+
+  <script type="module">
+    import { hautlyWeb, createAgentAdapter } from "../packages/hautly-entity/src/index.ts";
+
+    // Create Hautly on the canvas
+    const h = hautlyWeb({
+      target: "#entity-container",
+      renderer: "orb",
+      form: "orb",
+      fontSize: 12,
+    });
+
+    // Create agent adapter
+    let currentAgent = "opencode";
+    let adapter = createAgentAdapter({
+      agent: currentAgent,
+      engine: h.engine,
+      autoSpeak: true,
+      onEvent: (event) => {
+        addLog(event.type, event.message ?? event.tool ?? "");
+      },
+    });
+
+    adapter.connect();
+
+    // Logging
+    function addLog(type, msg) {
+      const log = document.getElementById("event-log");
+      const div = document.createElement("div");
+      div.className = "event";
+      div.innerHTML = `<span class="event-type">${type}</span> <span class="event-msg">${msg}</span>`;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    // Agent selector
+    document.querySelectorAll("[data-agent]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-agent]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentAgent = btn.dataset.agent;
+        adapter.disconnect();
+        adapter = createAgentAdapter({
+          agent: currentAgent,
+          engine: h.engine,
+          autoSpeak: true,
+          onEvent: (event) => addLog(event.type, event.message ?? event.tool ?? ""),
+        });
+        adapter.connect();
+        addLog("switch", `Connected to ${currentAgent}`);
+      });
+    });
+
+    // Mood buttons
+    document.querySelectorAll("[data-mood]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        h.update({ mood: btn.dataset.mood });
+      });
+    });
+
+    // Form buttons
+    document.getElementById("btn-form-orb")?.addEventListener("click", () => {
+      h.update({ form: "orb" });
+      setActive("btn-form-orb");
+    });
+    document.getElementById("btn-form-crystal")?.addEventListener("click", () => {
+      h.update({ form: "crystal" });
+      setActive("btn-form-crystal");
+    });
+    document.getElementById("btn-form-jelly")?.addEventListener("click", () => {
+      h.update({ form: "jelly" });
+      setActive("btn-form-jelly");
+    });
+    document.getElementById("btn-form-phoenix")?.addEventListener("click", () => {
+      h.update({ form: "phoenix" });
+      setActive("btn-form-phoenix");
+    });
+
+    function setActive(id) {
+      document.querySelectorAll("[id^=btn-form-]").forEach(b => b.classList.remove("active"));
+      document.getElementById(id)?.classList.add("active");
+    }
+
+    // Speak button
+    document.getElementById("btn-speak")?.addEventListener("click", () => {
+      h.say("Hello! I'm Hautly, your coding companion.");
+    });
+
+    // Simulate agent events
+    document.getElementById("btn-simulate")?.addEventListener("click", async () => {
+      const events = [
+        { type: "thinking", message: "Analyzing codebase..." },
+        { type: "tool:call", tool: "grep", message: "Searching for patterns" },
+        { type: "tool:result", message: "Found 12 matches" },
+        { type: "working", message: "Applying changes..." },
+        { type: "tool:call", tool: "write_file", message: "Saving refactored code" },
+        { type: "message:assistant", message: "Done! I've cleaned up the imports." },
+        { type: "idle", message: "Ready" },
+      ];
+
+      for (const event of events) {
+        adapter.emit({ agentId: "demo", ...event });
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    });
+  </script>
+</body>
+</html>

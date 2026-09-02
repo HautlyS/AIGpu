@@ -1,0 +1,41 @@
+{
+  "name": "@hautly/entity",
+  "version": "0.1.0",
+  "description": "Hautly — alive ASCII orb-spirit entity with AI connectivity, GPU acceleration, and multi-platform rendering",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./terminal": "./src/hautly-terminal.ts",
+    "./web": "./src/hautly-web.ts",
+    "./react": "./src/hautly-react.tsx",
+    "./vue": "./src/hautly-vue.ts",
+    "./svelte": "./src/hautly-svelte.ts",
+    "./webgpu": "./src/hautly-webgpu.ts",
+    "./renderers": "./src/hautly-renderers.ts",
+    "./speech": "./src/hautly-speech.ts",
+    "./agents": "./src/hautly-agents.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "aigpu": "workspace:*"
+  },
+  "devDependencies": {
+    "@webgpu/types": "^0.1.69",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "vue": ">=3",
+    "svelte": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "vue": { "optional": true },
+    "svelte": { "optional": true }
+  },
+  "files": ["src"],
+  "license": "MIT"
+}

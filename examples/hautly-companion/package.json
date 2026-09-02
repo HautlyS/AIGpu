@@ -1,0 +1,16 @@
+{
+  "name": "@hautly/example-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 4173 --directory .",
+    "terminal": "npx tsx companion-terminal.ts",
+    "terminal:claude": "npx tsx companion-terminal.ts --agent=claude-code",
+    "terminal:codex": "npx tsx companion-terminal.ts --agent=codex",
+    "terminal:opencode": "npx tsx companion-terminal.ts --agent=opencode"
+  },
+  "dependencies": {
+    "@hautly/entity": "workspace:*"
+  }
+}
