@@ -322,6 +322,233 @@ const asciiRadar = (ctx, w, h, t) => {
   }
 };
 
+const asciiBlackHole = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const chars = '·:.:=+*#%@';
+  for (let i = 0; i < 200; i++) {
+    const angle = (i / 200) * Math.PI * 2;
+    const dist = 20 + Math.abs(Math.sin(angle * 3 + t)) * 100;
+    const warp = Math.sin(t * 0.5) * 0.3;
+    const x = cx + Math.cos(angle + warp) * dist;
+    const y = cy + Math.sin(angle + warp) * dist * 0.6;
+    const ci = Math.floor((dist / 120) * (chars.length - 1));
+    ctx.fillStyle = `rgba(255,255,255,${0.1 + (1 - dist / 120) * 0.5})`;
+    ctx.font = `${8 + Math.floor(dist / 30)}px monospace`;
+    ctx.fillText(chars[ci], x, y);
+  }
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '10px monospace';
+  ctx.fillText('EVENT HORIZON', cx - 35, cy + 35);
+};
+
+const asciiEarth = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.35;
+  const chars = ' .:-=+*#%@';
+  const offset = t * 0.3;
+  for (let y = -r; y < r; y += 6) {
+    for (let x = -r; x < r; x += 6) {
+      if (x * x + y * y > r * r) continue;
+      const lat = Math.asin(y / r);
+      const lon = Math.atan2(x, Math.sqrt(r * r - x * x - y * y)) + offset;
+      const land = Math.sin(lon * 3) * Math.cos(lat * 4) > 0.2;
+      const night = Math.cos(lon + offset) < -0.2;
+      const val = land ? (night ? 0.2 : 0.7) : 0.1;
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.1 + val * 0.5})`;
+      ctx.font = '6px monospace';
+      ctx.fillText(chars[ci], cx + x, cy + y);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.font = '10px monospace';
+  ctx.fillText('PROCEDURAL PLANET', 10, h - 10);
+};
+
+const asciiInstanced = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cols = 12, rows = 8;
+  const cellW = w / cols, cellH = h / rows;
+  const chars = ['+--+', '|##|', '+--+'];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const ox = Math.sin(t * 2 + x * 0.5 + y * 0.3) * 4;
+      const oy = Math.cos(t * 1.5 + y * 0.5 + x * 0.3) * 4;
+      const alpha = 0.15 + Math.abs(Math.sin(t + x + y)) * 0.35;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.font = '10px monospace';
+      for (let row = 0; row < 3; row++) {
+        ctx.fillText(chars[row], x * cellW + ox + 4, y * cellH + row * 12 + oy + 12);
+      }
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '10px monospace';
+  ctx.fillText(`INSTANCES: ${cols * rows}`, 10, h - 10);
+};
+
+const asciiOcean = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cols = 50, rows = 20;
+  const cellW = w / cols, cellH = h / rows;
+  const chars = ' .·:ⁱパーテblings░▒▓';
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const wave = Math.sin(x * 0.15 + t * 1.5 + y * 0.1) * 0.5 + 0.5;
+      const foam = Math.abs(Math.sin(x * 0.3 + t * 2)) > 0.9 ? 0.8 : 0;
+      const val = Math.min(1, wave + foam);
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + val * 0.45})`;
+      ctx.font = `${cellH - 2}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 1, y * cellH + cellH - 2);
+    }
+  }
+};
+
+const asciiFractal = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const chars = '·.:;i1tfLCG08#';
+  for (let i = 0; i < 400; i++) {
+    const a = i * 0.1 + t * 0.5;
+    const r = i * 0.4 + Math.sin(a * 3) * 20;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    if (x < 0 || x > w || y < 0 || y > h) continue;
+    const ci = i % chars.length;
+    const alpha = Math.max(0.05, 0.6 - i * 0.0015);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.font = `${8 + (i % 5)}px monospace`;
+    ctx.fillText(chars[ci], x, y);
+  }
+};
+
+const asciiTransmission = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const chars = '·:.:=+*#%@';
+  const size = Math.min(w, h) * 0.3;
+  for (let y = -size; y < size; y += 7) {
+    for (let x = -size; x < size; x += 7) {
+      const inBox = Math.abs(x) < size * 0.6 && Math.abs(y) < size * 0.6;
+      const refractX = x + Math.sin(t + y * 0.05) * 8;
+      const refractY = y + Math.cos(t + x * 0.05) * 8;
+      const val = Math.sin(refractX * 0.08 + t) * Math.cos(refractY * 0.08) * 0.5 + 0.5;
+      const ci = Math.floor(val * (chars.length - 1));
+      const alpha = inBox ? 0.3 + val * 0.4 : 0.08 + val * 0.15;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.font = '7px monospace';
+      ctx.fillText(chars[ci], cx + x, cy + y);
+    }
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - size * 0.6, cy - size * 0.6, size * 1.2, size * 1.2);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '10px monospace';
+  ctx.fillText('SCREEN-SPACE REFRACTION', 10, h - 10);
+};
+
+const asciiRadiance = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const chars = '·:.:=+*#%@';
+  for (let cascade = 0; cascade < 6; cascade++) {
+    const r = 20 + cascade * 25;
+    const segments = 16 + cascade * 8;
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2 + t * 0.3 * (cascade % 2 ? 1 : -1);
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      const ci = cascade % chars.length;
+      const alpha = 0.1 + (cascade / 6) * 0.4;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.font = `${9 + cascade}px monospace`;
+      ctx.fillText(chars[ci], x, y);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.font = '10px monospace';
+  ctx.fillText('6-CASCADE GI', 10, h - 10);
+};
+
+const asciiDepthMap = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cols = 32, rows = 18;
+  const cellW = w / cols, cellH = h / rows;
+  const chars = ' ·∶:░▒▓█';
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const depth = Math.sin(x * 0.2 + t * 0.5) * Math.cos(y * 0.25 + t * 0.3) * 0.5 + 0.5;
+      const ci = Math.floor(depth * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.08 + depth * 0.5})`;
+      ctx.font = `${cellH - 2}px monospace`;
+      ctx.fillText(chars[ci], x * cellW + 2, y * cellH + cellH - 2);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '10px monospace';
+  ctx.fillText('DEPTH ESTIMATION // ONNX', 10, h - 10);
+};
+
+const asciiClipping = (ctx, w, h, t) => {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.35;
+  const chars = '·:.:=+*#%@';
+  const clipY = Math.sin(t * 0.8) * r * 0.6;
+  for (let y = -r; y < r; y += 7) {
+    for (let x = -r; x < r; x += 7) {
+      if (x * x + y * y > r * r) continue;
+      if (y > clipY) continue;
+      const val = (Math.sin(x * 0.1 + t) * Math.cos(y * 0.1) * 0.5 + 0.5);
+      const ci = Math.floor(val * (chars.length - 1));
+      ctx.fillStyle = `rgba(255,255,255,${0.1 + val * 0.45})`;
+      ctx.font = '7px monospace';
+      ctx.fillText(chars[ci], cx + x, cy + y);
+    }
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy + clipY);
+  ctx.lineTo(cx + r, cy + clipY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.font = '10px monospace';
+  ctx.fillText('SDF CLIPPING PLANE', 10, h - 10);
+};
+
 const asciiWaveform = (ctx, w, h, t) => {
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#000';
@@ -408,6 +635,31 @@ const drawCanvas = (canvas, rendererId, time, state) => {
     fw_react: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 6, chars: '><' }),
     fw_svelte: () => asciiWave(ctx, w, h, t, '~/\\'),
     fw_purejs: () => asciiParticles(ctx, w, h, t, { count: 60, chars: 'o*' }),
+    fw_nextjs: () => asciiWave(ctx, w, h, t, '~/\\'),
+    fw_threetsl: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 8, chars: '{}' }),
+    fw_nextjs: () => asciiWave(ctx, w, h, t, '~/\\'),
+    fw_threetsl: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 8, chars: '{}' }),
+    vgpu_gradient: () => asciiWave(ctx, w, h, t, '.:;-=+*#%@'),
+    vgpu_triangle_led: () => asciiParticles(ctx, w, h, t, { count: 80, chars: '/\\|' }),
+    vgpu_anti_aliasing: () => asciiGrid(ctx, w, h, t, { cols: 20, rows: 10, chars: '::--++' }),
+    vgpu_black_hole: () => asciiBlackHole(ctx, w, h, t),
+    vgpu_optimized_black_hole: () => asciiBlackHole(ctx, w, h, t),
+    vgpu_earth: () => asciiEarth(ctx, w, h, t),
+    vgpu_fluid_sim: () => asciiFire(ctx, w, h, t),
+    vgpu_instanced: () => asciiInstanced(ctx, w, h, t),
+    vgpu_batch: () => asciiInstanced(ctx, w, h, t),
+    vgpu_fft_ocean: () => asciiOcean(ctx, w, h, t),
+    vgpu_fft_surface: () => asciiOcean(ctx, w, h, t),
+    vgpu_raymarch_fractal: () => asciiFractal(ctx, w, h, t),
+    vgpu_glass_fractal: () => asciiFractal(ctx, w, h, t),
+    vgpu_env_map: () => asciiRings(ctx, w, h, t, 'idle'),
+    vgpu_transmission: () => asciiTransmission(ctx, w, h, t),
+    vgpu_clipping: () => asciiClipping(ctx, w, h, t),
+    vgpu_radiance: () => asciiRadiance(ctx, w, h, t),
+    vgpu_agent_radiance: () => asciiRadiance(ctx, w, h, t),
+    vgpu_depth: () => asciiDepthMap(ctx, w, h, t),
+    vgpu_mnist: () => asciiGrid(ctx, w, h, t, { cols: 12, rows: 12, chars: '0123456789' }),
+    vgpu_particle_orbit: () => asciiSpiral(ctx, w, h, t),
   };
   const renderer = renderers[rendererId];
   if (renderer) renderer();
@@ -433,6 +685,7 @@ createApp({
       { id: 'agent', label: 'Agent' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'gpu_extra', label: 'GPU Extras' },
+      { id: 'vgpu_gallery', label: 'vgpu Gallery' },
     ];
 
     const examples = ref([
@@ -468,6 +721,28 @@ createApp({
       { id: 'lava', title: 'Lava: procedural fire flow', category: 'advanced', tags: 'lava fire procedural flow', description: 'Procedural lava with turbulent flow and heat dissipation.', code: `import { gpu, pingPong, Uniform } from 'aigpu'\n\nconst gpuCtx = gpu()\nawait gpuCtx.configure({ canvas })\n\nconst N = 256\nconst heat = pingPong(gpuCtx, N, N, { format: 'rgba16float' })\nconst time = Uniform(gpuCtx.device, { size: 16 })\n\nconst lavaShader = \`@group(0) @binding(0) var tex: texture_2d<f32>;\n@group(0) @binding(1) var samp: sampler;\n@group(0) @binding(2) var<uniform> time: f32;\n\n@fragment fn f(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = pos.xy / resolution;\n  let h = textureSample(tex, samp, uv).r;\n  let flow = fbm(uv * 3.0 + vec2f(time * 0.1, -time * 0.2));\n  let temp = h + flow * 0.3;\n  let r = smoothstep(0.2, 0.8, temp);\n  let g = smoothstep(0.4, 0.9, temp) * 0.5;\n  let b = smoothstep(0.6, 1.0, temp) * 0.2;\n  return vec4f(r, g, b, 1);\n}\`;`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/lava/renderer.ts' },
       { id: 'mesh_edit', title: 'Mesh editor', category: 'advanced', tags: 'mesh editor vertices edges', description: 'Interactive mesh editor with vertex manipulation on the GPU.', code: `import { createApp, ref } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const vertices = ref([\n      { x: 0, y: 0, z: 0 },\n      { x: 1, y: 0, z: 0 },\n      { x: 0.5, y: 1, z: 0 },\n    ])\n    const edges = ref([[0, 1], [1, 2], [2, 0]])\n    const selected = ref(-1)\n\n    function selectVertex(i) { selected.value = i }\n    function moveSelected(dx, dy) {\n      if (selected.value >= 0) {\n        vertices.value[selected.value].x += dx\n        vertices.value[selected.value].y += dy\n      }\n    }\n\n    return { vertices, edges, selected, selectVertex, moveSelected }\n  }\n}).mount('#mesh')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/mesh_edit/renderer.ts' },
       { id: 'dom_mount', title: 'DOM mount: hybrid rendering', category: 'advanced', tags: 'dom mount hybrid html', description: 'Hybrid GPU + DOM rendering with CSS transform overlays.', code: `import { createApp, ref, onMounted } from 'vue'\nimport { gpu } from 'aigpu'\n\ncreateApp({\n  setup() {\n    const overlays = ref([])\n    const canvasRef = ref(null)\n\n    onMounted(() => {\n      const canvas = canvasRef.value\n      const gpuCtx = gpu()\n      gpuCtx.configure({ canvas })\n\n      // GPU renders base layer\n      // DOM overlays positioned via CSS transforms\n      function updateOverlays() {\n        const state = getState()\n        overlays.value = state.particles.map(p => ({\n          x: p.x, y: p.y,\n          label: p.label,\n          style: { transform: \`translate(\${p.x}px, \${p.y}px)\` }\n        }))\n      }\n    })\n\n    return { overlays, canvasRef }\n  }\n}).mount('#dom')`, source: 'https://github.com/hautlys/AIGpu/blob/main/examples/dom_mount/renderer.ts' },
+
+      // ==================== vgpu GALLERY EXAMPLES ====================
+      { id: 'vgpu_gradient', title: 'Simple Gradient', category: 'vgpu_gallery', tags: 'gradient fragment shader vignette', description: 'Map screen coordinates to color with a tiny fullscreen fragment shader.', code: `// vgpu original: gradient example\nimport { effect, frameLoop, init, surface } from 'aigpu'\nimport fragment from './shader.wgsl'\n\nexport async function createRenderer(canvas: HTMLCanvasElement) {\n  const gpu = await init()\n  const output = surface(gpu, canvas, { dpr: [1, 2] })\n  const shader = effect(gpu, fragment)\n  frameLoop(gpu, (currentFrame) => currentFrame.pass(output, shader))\n  return { dispose: () => gpu.dispose() }\n}\n\n// shader.wgsl\n@fragment\nfn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let vignette = smoothstep(1.2, 0.2, distance(uv, vec2f(0.5)));\n  return vec4f(uv.x, uv.y, 0.46 + 0.16 * vignette, 1.0);\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/gradient' },
+      { id: 'vgpu_triangle_led', title: 'Triangle LED Hero', category: 'vgpu_gallery', tags: 'triangle led raycast lighting', description: 'Analytic edge-glow triangle with LED emitters, floor radiance, and interactive color.', code: `// vgpu original: triangle LED hero\nimport { draw, geometry } from 'aigpu'\n\nconst canvas = document.querySelector('canvas')\nconst gpu = await init()\n\n// LED emitter geometry\nconst ledGeo = geometry(gpu, {\n  vertices: new Float32Array([...]),\n  stepMode: 'instance',\n})\n\n// Direct triangle raycast shader\nconst raycast = effect(gpu, raycastShader)\nconst ledEmit = effect(gpu, ledShader)\nconst floorNoise = effect(gpu, floorShader)\n\nfunction render(t) {\n  draw(gpu, (pass) => {\n    pass.effect(floorNoise)\n    pass.effect(ledEmit, ledGeo)\n    pass.effect(raycast)\n  })\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/triangle-led-front' },
+      { id: 'vgpu_anti_aliasing', title: 'Anti-Aliasing', category: 'vgpu_gallery', tags: 'anti-aliasing msaa ssaa fxaa', description: 'One high-contrast scene through Off, MSAA 4x, SSAA 2x, and FXAA.', code: `// vgpu original: anti-aliasing comparison\nimport { init, target, effect } from 'aigpu'\n\nconst gpu = await init()\n\n// MSAA 4x target\nconst msaaTarget = target(gpu, {\n  width: 1024,\n  height: 768,\n  sampleCount: 4,\n  format: 'bgra8unorm',\n})\n\n// FXAA post-process\nconst fxaa = effect(gpu, fxaaShader)\n\nfunction render() {\n  const pass = gpu.beginPass({ target: msaaTarget })\n  pass.effect(scene)\n  pass.end()\n  // Resolve MSAA → FXAA\n  fxaa.apply(msaaTarget.texture)\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/anti-aliasing' },
+      { id: 'vgpu_black_hole', title: 'Black Hole', category: 'vgpu_gallery', tags: 'black-hole raymarching lensing hdr', description: 'Raymarched gravitational lensing with Keplerian accretion disk and Doppler beaming.', code: `// vgpu original: black hole\nimport { init, effect, frameLoop, surface } from 'aigpu'\n\nconst gpu = await init()\nconst output = surface(gpu, canvas)\n\n// Multi-pass: scene → bright pass → blur → composite\nconst scene = effect(gpu, blackHoleShader)\nconst brightPass = effect(gpu, brightShader)\nconst blurH = effect(gpu, blurHShader)\nconst blurV = effect(gpu, blurVShader)\nconst composite = effect(gpu, compositeShader)\n\nconst sceneTarget = target(gpu, { width: 1024, height: 1024, format: 'rgba16float' })\nconst blurA = target(gpu, { width: 256, height: 256, format: 'rgba16float' })\nconst blurB = target(gpu, { width: 256, height: 256, format: 'rgba16float' })\n\nframeLoop(gpu, (frame) => {\n  frame.pass(sceneTarget, scene)\n  frame.pass(blurA, brightPass)\n  for (let i = 0; i < 4; i++) {\n    frame.pass(blurB, blurH)\n    frame.pass(blurA, blurV)\n  }\n  frame.pass(output, composite)\n})`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/black-hole' },
+      { id: 'vgpu_earth', title: 'Earth', category: 'vgpu_gallery', tags: 'planet procedural hdr bloom lighting', description: 'Procedural planet with GPU-baked albedo, night lights, clouds, and atmosphere.', code: `// vgpu original: earth\nimport { init, effect, compute, storage, frameLoop } from 'aigpu'\n\nconst gpu = await init()\n\n// Bake planet surface\nconst bakeSurface = effect(gpu, bakeSurfaceShader)\nconst bakeClouds = effect(gpu, bakeCloudsShader)\n\n// Atmosphere + bloom chain\nconst atmosphere = effect(gpu, atmosphereShader)\nconst sky = effect(gpu, skyShader)\nconst brightPass = effect(gpu, brightShader)\nconst blurH = effect(gpu, blurHShader)\nconst blurV = effect(gpu, blurVShader)\nconst composite = effect(gpu, compositeShader)\n\nframeLoop(gpu, (frame) => {\n  frame.effect(bakeSurface)\n  frame.effect(bakeClouds)\n  frame.pass(sceneTarget, earth)\n  frame.pass(sceneTarget, atmosphere)\n  frame.pass(sceneTarget, sky)\n  // HDR bloom chain\n  frame.pass(blurA, brightPass)\n  for (let i = 0; i < 3; i++) {\n    frame.pass(blurB, blurH)\n    frame.pass(blurA, blurV)\n  }\n  frame.pass(output, composite)\n})`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/earth' },
+      { id: 'vgpu_fluid_sim', title: 'Interactive Fluid', category: 'vgpu_gallery', tags: 'fluid simulation compute navier-stokes', description: 'Pressure-projected fluid solver with velocity advection, dye, and pointer stirring.', code: `// vgpu original: interactive fluid\nimport { init, compute, pingPongStorage, storage, effect } from 'aigpu'\n\nconst gpu = await init()\nconst N = [128, 72]\nconst dyeN = [512, 288]\n\nconst velocity = pingPongStorage(gpu, N, { format: 'rgba16float' })\nconst pressure = pingPongStorage(gpu, N, { format: 'rgba16float' })\nconst dye = pingPongStorage(gpu, dyeN, { format: 'rgba16float' })\n\nconst advectVelocity = compute(gpu, advectVelocityShader)\nconst computeCurl = compute(gpu, curlShader)\nconst applyVorticity = compute(gpu, vorticityShader)\nconst computeDivergence = compute(gpu, divergenceShader)\nconst pressureSolve = compute(gpu, pressureShader)\nconst project = compute(gpu, projectShader)\nconst advectDye = compute(gpu, advectDyeShader)\nconst display = effect(gpu, displayShader)\n\nfunction simulate(dt) {\n  advectVelocity.dispatch(velocity)\n  computeCurl.dispatch(velocity)\n  applyVorticity.dispatch(velocity)\n  computeDivergence.dispatch(velocity)\n  for (let i = 0; i < 20; i++) pressureSolve.dispatch(pressure)\n  project.dispatch(velocity, pressure)\n  advectDye.dispatch(dye, velocity)\n  velocity.swap()\n  pressure.swap()\n  dye.swap()\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/fluid' },
+      { id: 'vgpu_instanced', title: 'Instanced Rendering', category: 'vgpu_gallery', tags: 'instancing indirect 125k cubes performance', description: 'One cube mesh + one instance stream, 125,000 independently animated cubes.', code: `// vgpu original: instanced rendering\nimport { init, draw, geometry, bundle } from 'aigpu'\n\nconst gpu = await init()\nconst cubeGeo = geometry(gpu, {\n  vertices: cubeVertices,\n  indices: cubeIndices,\n  stepMode: 'instance',\n  instanceCount: 125000,\n})\n\nconst scenePipeline = gpu.device.createRenderPipeline({ ... })\n\n// Record render bundle for instant replay\nconst renderBundle = bundle(gpu, (pass) => {\n  pass.setPipeline(scenePipeline)\n  pass.setBindGroup(0, uniformBindGroup)\n  pass.drawIndexed(cubeIndices.length, 125000)\n})\n\nfunction render(t) {\n  gpu.device.queue.writeBuffer(timeBuffer, 0, new Float32Array([t]))\n  const pass = gpu.beginPass({ canvas })\n  pass.executeBundles([renderBundle])\n  pass.end()\n  gpu.submit()\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/instanced-rendering' },
+      { id: 'vgpu_batch', title: 'Batch Rendering', category: 'vgpu_gallery', tags: 'batch rendering render bundles primitives', description: 'Four primitive ranges in one mesh, recorded once as a render bundle.', code: `// vgpu original: batch rendering\nimport { init, geometry, bundle } from 'aigpu'\n\nconst gpu = await init()\n\n// One mesh with 4 primitive ranges\nconst batchGeo = geometry(gpu, {\n  vertices: combinedVertices,\n  ranges: [\n    { offset: 0, count: 3 },       // triangle\n    { offset: 3, count: 4 },       // quad\n    { offset: 7, count: 5 },       // pentagon\n    { offset: 12, count: 6 },      // hexagon\n  ],\n})\n\n// Record bundle once\nconst renderBundle = bundle(gpu, (pass) => {\n  pass.setPipeline(pipeline)\n  pass.setBindGroup(0, bindGroup)\n  pass.draw(3)   // triangle\n  pass.draw(4)   // quad\n  pass.draw(5)   // pentagon\n  pass.draw(6)   // hexagon\n})\n\n// Replay every frame — near-zero cost\nfunction render() {\n  const pass = gpu.beginPass({ canvas })\n  pass.executeBundles([renderBundle])\n  pass.end()\n  gpu.submit()\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/batch-rendering' },
+      { id: 'vgpu_fft_ocean', title: 'Particles Ocean', category: 'vgpu_gallery', tags: 'ocean fft particles frequency spectrum', description: 'Deep-water surface driven by inverse FFT. Phillips spectrum + Stockham passes + 500K particles.', code: `// vgpu original: particles ocean (FFT)\nimport { init, compute, storage, effect } from 'aigpu'\n\nconst gpu = await init()\nconst N = 256\n\n// Frequency-space spectrum\nconst spectrumInit = compute(gpu, spectrumInitShader)\nconst spectrumUpdate = compute(gpu, spectrumUpdateShader)\n\n// Inverse FFT (Stockham passes)\nconst ifftRow = compute(gpu, ifftRowShader)\nconst ifftCol = compute(gpu, ifftColShader)\n\n// Normal + foam\nconst normalFoam = compute(gpu, normalFoamShader)\n\n// Particle rendering\nconst particles = effect(gpu, particleShader)\n\n// Bloom chain\nconst bright = effect(gpu, brightShader)\nconst blurH = effect(gpu, blurHShader)\nconst blurV = effect(gpu, blurVShader)\nconst bloomComposite = effect(gpu, bloomCompositeShader)\n\nfunction simulate(t) {\n  spectrumUpdate.dispatch(t)\n  ifftRow.dispatch()\n  ifftCol.dispatch()\n  normalFoam.dispatch()\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/fft-ocean' },
+      { id: 'vgpu_fft_surface', title: 'FFT Ocean Surface', category: 'vgpu_gallery', tags: 'ocean fft surface compute displacement', description: 'Displaced ocean surface with real inverse FFT, per-pixel normals, foam, Fresnel sky.', code: `// vgpu original: FFT ocean surface\nimport { init, compute, effect, frameLoop } from 'aigpu'\n\nconst gpu = await init()\n\nconst spectrumInit = compute(gpu, spectrumInitShader)\nconst spectrumUpdate = compute(gpu, spectrumUpdateShader)\nconst fftRow = compute(gpu, fftRowShader)\nconst fftCol = compute(gpu, fftColShader)\nconst bakeSurface = compute(gpu, bakeShader)\n\nconst oceanSurface = effect(gpu, oceanSurfaceShader)\nconst sky = effect(gpu, skyShader)\nconst skydome = effect(gpu, skydomeShader)\nconst composite = effect(gpu, compositeShader)\n\nframeLoop(gpu, (frame) => {\n  spectrumUpdate.dispatch(frame.time)\n  fftRow.dispatch()\n  fftCol.dispatch()\n  bakeSurface.dispatch()\n  frame.pass(sceneTarget, oceanSurface)\n  frame.pass(sceneTarget, sky)\n  frame.pass(output, composite)\n})`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/fft-ocean-surface' },
+      { id: 'vgpu_raymarch_fractal', title: 'Raymarched Fractal', category: 'vgpu_gallery', tags: 'raymarching fractal sierpinski tetrahedron', description: 'Raymarched Sierpinski tetrahedron with directional light and HDR bloom.', code: `// vgpu original: raymarched fractal\nimport { init, effect, frameLoop, surface, target } from 'aigpu'\n\nconst gpu = await init()\nconst output = surface(gpu, canvas)\n\nconst sceneTarget = target(gpu, { width: 1024, height: 1024, format: 'rgba16float' })\n\nconst fractal = effect(gpu, fractalShader)\nconst brightPass = effect(gpu, brightShader)\nconst blurH = effect(gpu, blurHShader)\nconst blurV = effect(gpu, blurVShader)\nconst composite = effect(gpu, compositeShader)\n\nframeLoop(gpu, (frame) => {\n  frame.pass(sceneTarget, fractal)\n  frame.pass(blurA, brightPass)\n  for (let i = 0; i < 3; i++) {\n    frame.pass(blurB, blurH)\n    frame.pass(blurA, blurV)\n  }\n  frame.pass(output, composite)\n})\n\n// fractal.wgsl — SDF + raymarching\n@fragment fn fs_main(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = (pos.xy - resolution * 0.5) / resolution.y;\n  let ro = vec3f(0, 0, -3);\n  let rd = normalize(vec3f(uv, 1.5));\n  var t = 0.0;\n  for (var i = 0; i < 128; i++) {\n    let p = ro + rd * t;\n    let d = sierpinski(p);\n    if (d < 0.001) { break; }\n    t += d;\n  }\n  let col = select(vec4f(0), vec4f(1), t < 20.0);\n  return col;\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/raymarched-fractal' },
+      { id: 'vgpu_glass_fractal', title: 'Glass Fractal', category: 'vgpu_gallery', tags: 'glass fractal frosted transmission refraction', description: 'Beveled glass tetrahedron with morphing fractal mesh, screen-space transmission.', code: `// vgpu original: glass fractal\nimport { init, effect, geometry, target, frameLoop } from 'aigpu'\n\nconst gpu = await init()\n\n// Multi-pass: fractal → glass → floor → composite\nconst fractalMesh = effect(gpu, fractalMeshShader)\nconst glassTransmission = effect(gpu, glassShader)\nconst floorAO = effect(gpu, floorAOShader)\nconst fractalWireframe = effect(gpu, wireframeShader)\n\nconst sceneTarget = target(gpu, { width: 1024, height: 1024, format: 'rgba16float' })\nconst transmissionTarget = target(gpu, { width: 512, height: 512, format: 'rgba16float' })\n\nframeLoop(gpu, (frame) => {\n  frame.pass(sceneTarget, fractalMesh)\n  frame.pass(transmissionTarget, glassTransmission)\n  frame.pass(sceneTarget, floorAO)\n  frame.pass(sceneTarget, fractalWireframe)\n  frame.pass(output, composite)\n})`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/glass-fractal' },
+      { id: 'vgpu_env_map', title: 'Environment Map', category: 'vgpu_gallery', tags: 'environment map hdr lighting reflections ibl', description: '360-degree equirectangular map as background and every reflection on a mirror cube.', code: `// vgpu original: environment map\nimport { init, effect, geometry, target } from 'aigpu'\n\nconst gpu = await init()\n\n// Equirectangular environment map\nconst envMap = texture(gpu, { url: 'env.hdr' })\n\nconst metal = effect(gpu, metalShader)\nconst sky = effect(gpu, skyShader)\nconst blur = effect(gpu, blurShader)\nconst present = effect(gpu, presentShader)\n\nconst cubeGeo = geometry(gpu, {\n  vertices: cubeVertices,\n  indices: cubeIndices,\n})\n\nfunction render(t) {\n  const pass = gpu.beginPass({ canvas })\n  pass.effect(sky, { envMap })\n  pass.effect(metal, { geometry: cubeGeo, envMap })\n  pass.end()\n  gpu.submit()\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/environment-map' },
+      { id: 'vgpu_transmission', title: 'Transmission', category: 'vgpu_gallery', tags: 'transmission refraction glass screen-space', description: 'Glass cube refracts scene behind it in screen space with Snell, dispersion, Fresnel.', code: `// vgpu original: transmission\nimport { init, effect, geometry, target } from 'aigpu'\n\nconst gpu = await init()\n\nconst sceneTarget = target(gpu, { width: 1024, height: 1024, format: 'rgba8unorm' })\nconst blurPyramid = target(gpu, { width: 256, height: 256, format: 'rgba8unorm' })\n\nconst scene = effect(gpu, sceneShader)\nconst glass = effect(gpu, glassShader)\nconst blur = effect(gpu, blurShader)\nconst present = effect(gpu, presentShader)\n\nfunction render(t) {\n  // 1) Render scene\n  pass(sceneTarget, scene)\n  // 2) Build blur pyramid\n  for (let i = 0; i < 5; i++) blur.apply(sceneTarget.texture)\n  // 3) Glass reads blur pyramid with Snell refraction\n  pass(sceneTarget, glass)\n  // 4) Composite\n  pass(output, present)\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/transmission' },
+      { id: 'vgpu_clipping', title: 'Clipping', category: 'vgpu_gallery', tags: 'clipping sdf slicing cross-section', description: 'Signed-distance test slices an animated icosphere with moving cross-section disk.', code: `// vgpu original: clipping\nimport { init, effect, frameLoop, surface } from 'aigpu'\n\nconst gpu = await init()\nconst output = surface(gpu, canvas)\nconst clipped = effect(gpu, clippedShader)\n\nframeLoop(gpu, (frame) => {\n  frame.pass(output, clipped)\n})\n\n// clipped.wgsl — SDF slice + fitted disk\n@fragment fn fs_main(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n  let uv = (pos.xy - resolution * 0.5) / resolution.y;\n  let ro = vec3f(0, 0, -3);\n  let rd = normalize(vec3f(uv, 1.5));\n  let clipY = sin(time * 0.8) * 0.6;\n  var t = 0.0;\n  for (var i = 0; i < 64; i++) {\n    let p = ro + rd * t;\n    let d = icosphere(p);\n    if (d < 0.001 || p.y > clipY) { break; }\n    t += d;\n  }\n  let col = select(vec4f(0), vec4f(1), t < 20.0);\n  return col;\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/clipping' },
+      { id: 'vgpu_radiance', title: 'Radiance Cascades', category: 'vgpu_gallery', tags: 'radiance cascades global illumination jfa sdf', description: 'Draw light with pointer — JFA distance field feeds 6 radiance cascades for 2D GI.', code: `// vgpu original: radiance cascades\nimport { init, compute, effect, storage } from 'aigpu'\n\nconst gpu = await init()\n\nconst sdfBuffer = storage(gpu, { size: width * height * 4, usage: 'storage' })\nconst cascadeBuffers = Array.from({ length: 6 }, (_, i) =>\n  storage(gpu, { size: width * height * 16 * (4 ** i), usage: 'storage' })\n)\n\n// Jump-flooded distance field\nconst jfaInit = compute(gpu, jfaInitShader)\nconst jfaPass = compute(gpu, jfaPassShader)\nconst sdfFinalize = compute(gpu, sdfFinalizeShader)\n\n// 6-cascade merge (base 4, geometric intervals)\nconst radianceCascade = compute(gpu, rcShader)\nconst present = effect(gpu, presentShader)\n\nfunction simulate(t) {\n  jfaInit.dispatch()\n  for (let i = 0; i < 8; i++) jfaPass.dispatch()\n  sdfFinalize.dispatch()\n  for (let c = 0; c < 6; c++) radianceCascade.dispatch(c)\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/radiance-cascades' },
+      { id: 'vgpu_agent_radiance', title: 'Agent Radiance Cascades', category: 'vgpu_gallery', tags: 'agent radiance cascades gi hdr emitters', description: 'Agent mark becomes selectable loading field — dots are HDR emitters + occluders for GI.', code: `// vgpu original: agent radiance cascades\nimport { init, compute, effect, storage } from 'aigpu'\n\nconst gpu = await init()\n\n// Agent mark — 10 dots as HDR emitters\nconst agentDots = compute(gpu, agentDotsShader)\nconst sdfBuffer = storage(gpu, { size: width * height * 4, usage: 'storage' })\n\nconst jfaInit = compute(gpu, jfaInitShader)\nconst jfaPass = compute(gpu, jfaPassShader)\nconst sdfFinalize = compute(gpu, sdfFinalizeShader)\nconst radianceCascade = compute(gpu, rcShader)\nconst present = effect(gpu, presentShader)\n\nfunction simulate() {\n  agentDots.dispatch()\n  jfaInit.dispatch()\n  for (let i = 0; i < 8; i++) jfaPass.dispatch()\n  sdfFinalize.dispatch()\n  for (let c = 0; c < 6; c++) radianceCascade.dispatch(c)\n}`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/agent-radiance-cascades' },
+      { id: 'vgpu_depth', title: 'Depth Estimation', category: 'vgpu_gallery', tags: 'depth estimation onnx machine-learning', description: 'Estimate depth from photo/webcam with ONNX Runtime Web on WebGPU.', code: `// vgpu original: depth estimation\nimport { init, effect, storage, target } from 'aigpu'\nimport * as ort from 'onnxruntime-web'\n\nconst gpu = await init()\nconst session = await ort.InferenceSession.create('depth-anything.onnx', {\n  executionProviders: ['webgpu'],\n})\n\nconst inputBuffer = storage(gpu, { size: 518 * 518 * 3 * 4, usage: 'storage | copy-src' })\nconst depthBuffer = storage(gpu, { size: 518 * 518 * 4, usage: 'storage | copy-dst' })\n\n// Zero-copy wrap — vgpu buffer ↔ ONNX tensor\nconst inputTensor = new ort.Tensor('float32', inputBuffer.data, [1, 3, 518, 518])\n\nasync function estimateDepth(imageData) {\n  gpu.device.queue.writeBuffer(inputBuffer, 0, imageData)\n  const results = await session.run({ input: inputTensor })\n  return results.output.data\n}\n\nconst sideBySide = effect(gpu, sideBySideShader)\nconst reduceRange = effect(gpu, reduceRangeShader)`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/depth-estimation' },
+      { id: 'vgpu_mnist', title: 'MNIST Classifier', category: 'vgpu_gallery', tags: 'mnist classifier onnx digits machine-learning', description: 'Draw a digit, classify with ONNX on WebGPU. GPU-resident logits through buffer wrap.', code: `// vgpu original: MNIST classifier\nimport { init, effect, storage } from 'aigpu'\nimport * as ort from 'onnxruntime-web'\n\nconst gpu = await init()\nconst session = await ort.InferenceSession.create('mnist.onnx', {\n  executionProviders: ['webgpu'],\n})\n\n// Canvas input → GPU buffer\nconst inputBuffer = storage(gpu, { size: 28 * 28 * 4, usage: 'storage | copy-src' })\nconst logitsBuffer = storage(gpu, { size: 10 * 4, usage: 'storage | copy-dst' })\n\nconst inputTensor = new ort.Tensor('float32', inputBuffer.data, [1, 1, 28, 28])\n\nasync function classify(canvas) {\n  const ctx = canvas.getContext('2d')\n  const data = ctx.getImageData(0, 0, 28, 28)\n  gpu.device.queue.writeBuffer(inputBuffer, 0, data.data)\n  const results = await session.run({ input: inputTensor })\n  const logits = results.output.data\n  return Array.from(logits).indexOf(Math.max(...logits))\n}\n\nconst visualize = effect(gpu, visualizeShader)`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/mnist-classifier' },
+      { id: 'vgpu_particle_orbit', title: 'Particle Orbit', category: 'vgpu_gallery', tags: 'particle orbit typegpu interop shared device', description: 'TypeGPU + vgpu shared device: light-seeking dust + orbiting lights + HDR bloom + CRT.', code: `// vgpu original: particle orbit (TypeGPU interop)\nimport { init, effect, compute, storage, target } from 'aigpu'\nimport { createRuntime } from 'typegpu'\n\n// Shared device between vgpu and TypeGPU\nconst gpu = await init()\nconst typegpu = createRuntime(gpu.device)\n\n// TypeGPU: particle simulation\nconst dustSim = typegpu.createComputePipeline({ ... })\nconst particles = typegpu.createBuffer(...)\n\n// vgpu: rendering (zero-copy shared buffer)\nconst nebula = effect(gpu, nebulaShader)\nconst stars = effect(gpu, starsShader)\nconst atmosphere = effect(gpu, atmosphereShader)\nconst trails = effect(gpu, trailsShader)\n\n// Radiance cascades for GI\nconst rcEmitter = compute(gpu, rcEmitterShader)\nconst rcDirections = compute(gpu, rcDirectionsShader)\nconst sdfSample = compute(gpu, sdfSampleShader)\nconst jfaInit = compute(gpu, jfaInitShader)\nconst jfaPass = compute(gpu, jfaPassShader)\nconst sdfFinalize = compute(gpu, sdfFinalizeShader)\nconst radianceCascade = compute(gpu, rcShader)\n\n// HDR bloom + CRT finish\nconst bright = effect(gpu, brightShader)\nconst blurH = effect(gpu, blurHShader)\nconst blurV = effect(gpu, blurVShader)\nconst post = effect(gpu, postShader)\n\nframeLoop(gpu, (frame) => {\n  // TypeGPU runs particle sim\n  typegpu.cmd(dustSim).dispatch(particles)\n  // vgpu renders particles (zero-copy)\n  frame.pass(sceneTarget, nebula)\n  frame.pass(sceneTarget, stars)\n  frame.pass(sceneTarget, trails)\n  // Bloom + CRT\n  frame.pass(blurA, bright)\n  for (let i = 0; i < 3; i++) {\n    frame.pass(blurB, blurH)\n    frame.pass(blurA, blurV)\n  }\n  frame.pass(output, post)\n})`, source: 'https://github.com/vercel-labs/vgpu/tree/main/examples/particle-orbit' },
     ]);
 
     const frameworks = ref([
@@ -475,6 +750,8 @@ createApp({
       { id: 'react', name: 'React', lang: 'TSX', desc: 'useRef for canvas. useEffect for lifecycle. GPU state via props/callbacks.', code: `// AIGpuAgent.tsx\nimport { useRef, useEffect, useState, useCallback } from 'react'\nimport { gpu } from 'aigpu'\n\ninterface AgentProps {\n  initialStatus?: string\n  onStatusChange?: (status: string) => void\n}\n\nexport function AIGpuAgent({\n  initialStatus = 'working',\n  onStatusChange,\n}: AgentProps) {\n  const canvasRef = useRef<HTMLCanvasElement>(null)\n  const gpuRef = useRef<ReturnType<typeof gpu> | null>(null)\n  const [status, setStatus] = useState(initialStatus)\n  const [progress, setProgress] = useState(64)\n  const [activity, setActivity] = useState(42)\n\n  useEffect(() => {\n    if (!canvasRef.current) return\n\n    const gpuCtx = gpu()\n    gpuRef.current = gpuCtx\n\n    gpuCtx.configure({ canvas: canvasRef.current })\n\n    const uniformBuffer = gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    const pipeline = gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: gpuCtx.format }],\n      },\n    })\n\n    let animId: number\n    function render() {\n      const pass = gpuCtx.beginPass({ canvas: canvasRef.current! })\n      pass.setPipeline(pipeline)\n      pass.draw(3)\n      pass.end()\n      gpuCtx.submit()\n      animId = requestAnimationFrame(render)\n    }\n    render()\n\n    return () => {\n      cancelAnimationFrame(animId)\n      gpuCtx.device.destroy()\n    }\n  }, [])\n\n  useEffect(() => {\n    if (!gpuRef.current) return\n    gpuRef.current.device.queue.writeBuffer(\n      uniformBuffer, 0,\n      new Float32Array([\n        statusToFloat(status),\n        progress / 100,\n        activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }, [status, progress, activity])\n\n  const handleStatusChange = useCallback((e) => {\n    const newStatus = e.target.value\n    setStatus(newStatus)\n    onStatusChange?.(newStatus)\n  }, [onStatusChange])\n\n  return (\n    <div className="agent">\n      <canvas ref={canvasRef} width={400} height={300} />\n      <div className="controls">\n        <select value={status} onChange={handleStatusChange}>\n          <option value="idle">idle</option>\n          <option value="thinking">thinking</option>\n          <option value="working">working</option>\n          <option value="success">success</option>\n          <option value="error">error</option>\n        </select>\n        <input\n          type="range"\n          min={0}\n          max={100}\n          value={progress}\n          onChange={(e) => setProgress(Number(e.target.value))}\n        />\n      </div>\n    </div>\n  )\n}\n\nfunction statusToFloat(s: string): number {\n  return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n}` },
       { id: 'purejs', name: 'Pure JS', lang: 'JavaScript', desc: 'Zero dependencies. Direct GPU API. Works anywhere with WebGPU.', code: `// agent.js\nimport { gpu } from 'aigpu'\n\nclass AIGpuAgent {\n  constructor(canvas, options = {}) {\n    this.canvas = canvas\n    this.status = options.status || 'idle'\n    this.progress = options.progress || 0\n    this.activity = options.activity || 0\n\n    this.gpuCtx = gpu()\n    this.gpuCtx.configure({ canvas })\n\n    this.uniformBuffer = this.gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    this.pipeline = this.gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: this.gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: this.gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: this.gpuCtx.format }],\n      },\n    })\n\n    this.render()\n  }\n\n  patch(state) {\n    if (state.status !== undefined) this.status = state.status\n    if (state.progress !== undefined) this.progress = state.progress\n    if (state.activity !== undefined) this.activity = state.activity\n\n    this.gpuCtx.device.queue.writeBuffer(\n      this.uniformBuffer, 0,\n      new Float32Array([\n        this._statusToFloat(this.status),\n        this.progress / 100,\n        this.activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }\n\n  render() {\n    const pass = this.gpuCtx.beginPass({ canvas: this.canvas })\n    pass.setPipeline(this.pipeline)\n    pass.setBindGroup(0, this.bindGroup)\n    pass.draw(3)\n    pass.end()\n    this.gpuCtx.submit()\n    this._rafId = requestAnimationFrame(() => this.render())\n  }\n\n  destroy() {\n    cancelAnimationFrame(this._rafId)\n    this.gpuCtx.device.destroy()\n  }\n\n  _statusToFloat(s) {\n    return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n  }\n}\n\n// Usage\nconst agent = new AIGpuAgent(document.querySelector('canvas'))\nagent.patch({ status: 'working', progress: 50 })\n\n// Accepts plain objects — no framework needed\nws.onmessage = (e) => agent.patch(JSON.parse(e.data))` },
       { id: 'svelte', name: 'Svelte', lang: 'Svelte', desc: 'Reactive statements auto-sync GPU state. Compile-time optimized.', code: `<!-- AIGpuAgent.svelte -->\n<script>\n  import { onMount, onDestroy } from 'svelte'\n  import { gpu } from 'aigpu'\n\n  export let status = 'working'\n  export let progress = 64\n  export let activity = 42\n\n  let canvas\n  let gpuCtx\n  let pipeline\n  let uniformBuffer\n  let bindGroup\n  let rafId\n\n  onMount(() => {\n    gpuCtx = gpu()\n    gpuCtx.configure({ canvas })\n\n    uniformBuffer = gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    pipeline = gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: gpuCtx.format }],\n      },\n    })\n\n    bindGroup = gpuCtx.device.createBindGroup({\n      layout: pipeline.getBindGroupLayout(0),\n      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],\n    })\n\n    render()\n  })\n\n  onDestroy(() => {\n    cancelAnimationFrame(rafId)\n    gpuCtx?.device?.destroy()\n  })\n\n  // Reactive: auto-update GPU when state changes\n  $: if (gpuCtx && uniformBuffer) {\n    gpuCtx.device.queue.writeBuffer(\n      uniformBuffer, 0,\n      new Float32Array([\n        statusToFloat(status),\n        progress / 100,\n        activity / 100,\n        performance.now() / 1000,\n      ])\n    )\n  }\n\n  function render() {\n    const pass = gpuCtx.beginPass({ canvas })\n    pass.setPipeline(pipeline)\n    pass.setBindGroup(0, bindGroup)\n    pass.draw(3)\n    pass.end()\n    gpuCtx.submit()\n    rafId = requestAnimationFrame(render)\n  }\n\n  function statusToFloat(s) {\n    return { idle: 0, thinking: 0.2, working: 0.5, success: 0.8, error: 1.0 }[s] ?? 0\n  }\n</script>\n\n<div class="agent">\n  <canvas bind:this={canvas} width="400" height="300" />\n  <div class="controls">\n    <select bind:value={status}>\n      <option value="idle">idle</option>\n      <option value="thinking">thinking</option>\n      <option value="working">working</option>\n      <option value="success">success</option>\n      <option value="error">error</option>\n    </select>\n    <input type="range" min="0" max="100" bind:value={progress} />\n  </div>\n</div>` },
+      { id: 'nextjs', name: 'Next.js', lang: 'TypeScript', desc: 'Server-only + client boundaries. Dynamic imports. SSR-safe GPU rendering.', code: `// app/agent/page.tsx (Server Component)\nimport dynamic from 'next/dynamic'\n\n// Dynamic import — client-only GPU code\nconst AIGpuAgent = dynamic(\n  () => import('./AIGpuAgent'),\n  { ssr: false }\n)\n\nexport default function AgentPage() {\n  return (\n    <div>\n      <h1>Agent Dashboard</h1>\n      <AIGpuAgent status="working" progress={64} />\n    </div>\n  )\n}\n\n// app/agent/AIGpuAgent.tsx (Client Component)\n'use client'\n\nimport { useRef, useEffect, useState } from 'react'\nimport { gpu } from 'aigpu'\n\nexport default function AIGpuAgent({\n  status: initialStatus = 'working',\n  progress: initialProgress = 64,\n}: {\n  status?: string\n  progress?: number\n}) {\n  const canvasRef = useRef<HTMLCanvasElement>(null)\n  const [status, setStatus] = useState(initialStatus)\n  const [progress, setProgress] = useState(initialProgress)\n\n  useEffect(() => {\n    if (!canvasRef.current) return\n\n    const gpuCtx = gpu()\n    gpuCtx.configure({ canvas: canvasRef.current })\n\n    const uniformBuffer = gpuCtx.device.createBuffer({\n      size: 32,\n      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,\n    })\n\n    const pipeline = gpuCtx.device.createRenderPipeline({\n      layout: 'auto',\n      vertex: {\n        module: gpuCtx.device.createShaderModule({ code: vertexShader }),\n        entryPoint: 'main',\n      },\n      fragment: {\n        module: gpuCtx.device.createShaderModule({ code: fragmentShader }),\n        entryPoint: 'main',\n        targets: [{ format: gpuCtx.format }],\n      },\n    })\n\n    let animId: number\n    function render() {\n      const pass = gpuCtx.beginPass({ canvas: canvasRef.current! })\n      pass.setPipeline(pipeline)\n      pass.draw(3)\n      pass.end()\n      gpuCtx.submit()\n      animId = requestAnimationFrame(render)\n    }\n    render()\n\n    return () => {\n      cancelAnimationFrame(animId)\n      gpuCtx.device.destroy()\n    }\n  }, [])\n\n  useEffect(() => {\n    if (!canvasRef.current) return\n    // Update GPU state via uniform buffer\n  }, [status, progress])\n\n  return (\n    <div className="agent">\n      <canvas ref={canvasRef} width={400} height={300} />\n      <div className="controls">\n        <select value={status} onChange={(e) => setStatus(e.target.value)}>\n          <option value="idle">idle</option>\n          <option value="working">working</option>\n          <option value="success">success</option>\n        </select>\n        <input\n          type="range"\n          min={0}\n          max={100}\n          value={progress}\n          onChange={(e) => setProgress(Number(e.target.value))}\n        />\n      </div>\n    </div>\n  )\n}` },
+      { id: 'threetsl', name: 'three.js TSL', lang: 'TypeScript', desc: 'Wire plain WGSL modules into three.js node material. 12 surface slots.', code: `// three.js TSL integration — WGSL in node material\nimport * as THREE from 'three'\nimport { wgslToTSL } from 'aigpu/three-tsl'\n\n// Import your WGSL shader modules\nimport lavaVertex from './lava-vertex.wgsl'\nimport lavaFragment from './lava-fragment.wgsl'\nimport noiseModule from './noise.wgsl'\n\n// Convert WGSL → three.js TSL nodes\nconst lavaNodes = wgslToTSL({\n  vertex: lavaVertex,\n  fragment: lavaFragment,\n  modules: [noiseModule],\n})\n\n// Create node material with 12 surface slots\nconst lavaMaterial = new THREE.NodeMaterial()\nlavaMaterial.colorNode = lavaNodes.color\nlavaMaterial.normalNode = lavaNodes.normal\nlavaMaterial.roughnessNode = lavaNodes.roughness\nlavaMaterial.metalnessNode = lavaNodes.metalness\nlavaMaterial.emissiveNode = lavaNodes.emissive\nlavaMaterial.opacityNode = lavaNodes.opacity\nlavaMaterial.positionNode = lavaNodes.position\nlavaMaterial.transformNormalNode = lavaNodes.transformNormal\nlavaMaterial.transformPositionNode = lavaNodes.transformPosition\nlavaMaterial.environmentNode = lavaNodes.environment\nlavaMaterial.shadowNode = lavaNodes.shadow\nlavaMaterial.lightNode = lavaNodes.light\n\n// Scene setup\nconst scene = new THREE.Scene()\nconst geometry = new THREE.SphereGeometry(1, 64, 64)\nconst mesh = new THREE.Mesh(geometry, lavaMaterial)\nscene.add(mesh)\n\n// Render loop\nconst renderer = new THREE.WebGLRenderer({ canvas })\nfunction animate(t) {\n  lavaMaterial.uniforms.time.value = t * 0.001\n  renderer.render(scene, camera)\n  requestAnimationFrame(animate)\n}` },
     ]);
 
     const filteredExamples = computed(() => {
