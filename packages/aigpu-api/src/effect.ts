@@ -1,0 +1,120 @@
+import type { Device } from "@aigpu/core";
+import { reflectSource } from "@aigpu/wgsl/reflect-source";
+import { InternalDraw, encodeDraw, type BlendOptions, type BlendPreset, type Draw, type DrawCallOptions } from "./draw.ts";
+import type { ClaimedGroupValidationResult, ValidationErrorSink } from "./claim-validation.ts";
+import type { BindGroupCache } from "./bind-cache.ts";
+import type { PipelineLayoutCache, PipelineStore, ShaderModuleCache } from "./pipeline-store.ts";
+import type { SetBag } from "./set-core.ts";
+import type { CompileTarget, Target } from "./target.ts";
+import { isTarget } from "./target-utils.ts";
+import { FRAME_DRAWABLE, type FrameDrawableProtocol } from "./frame-protocols.ts";
+import { liveKernel } from "./live-kernel.ts";
+import { renderService } from "./render-service.ts";
+import { toWgsl } from "./shader-source.ts";
+import { unsupportedError } from "./errors.ts";
+import type { ShaderSource } from "@aigpu/wgsl";
+import type { Gpu } from "./kernel.ts";
+
+/**
+ * Fullscreen shader pass of this gpu: the fragment shader is enough, the fullscreen triangle
+ * vertex stage is generated when the source has no vertex entry point.
+ *
+ * An effect is a draw with a fixed vertex stage, so it shares the gpu's single render service with
+ * `draw()`: same pipeline store, same bind group cache, same shader module and layout caches.
+ */
+export function effect(gpu: Gpu, source: string | ShaderSource, opts: EffectOptions = {}): Effect {
+  // Vertex buffers belong to the generated fullscreen stage, so geometry here would silently do
+  // nothing. Reject the option instead of ignoring it.
+  if ("geometry" in (opts as Record<string, unknown>)) throw unsupportedError("effect", "effect() never accepts vertex buffers; use draw(gpu, { shader, geometry: geometry(gpu, descriptor) }).");
+  const kernel = liveKernel(gpu, "effect");
+  const render = renderService(kernel);
+  return new InternalEffect(
+    kernel.device,
+    toWgsl(source),
+    opts,
+    render.binds,
+    undefined,
+    render.pipelines,
+    render.shaderModules,
+    render.pipelineLayouts,
+    (error) => kernel.reportError(error),
+    (promise) => { void kernel.trackDelivery(promise); },
+  );
+}
+
+export interface EffectOptions {
+  readonly set?: SetBag;
+  readonly label?: string;
+  /** Blend state applied to every color target of this effect's pipelines. Preset or explicit components. Immutable after construction. */
+  readonly blend?: BlendPreset | BlendOptions;
+  /** Channels written to color targets. Omit to write all (rgba). Empty array writes nothing. */
+  readonly writeMask?: readonly ("r" | "g" | "b" | "a")[];
+}
+
+const effectImpls = new WeakMap<Effect, InternalDraw>();
+
+export interface Effect {
+  readonly gpu: GPURenderPipeline | undefined;
+  set(values: SetBag): this;
+  draw(target?: Target | DrawCallOptions): void;
+  /** @throws AIGPU-SURFACE-NOT-IN-FRAME when passed a Surface outside frame(gpu). */
+  compile(target?: CompileTarget): Promise<this>;
+  /** @throws AIGPU-SURFACE-NOT-IN-FRAME when passed a Surface outside frame(gpu). */
+  compileSync(target?: CompileTarget): this;
+}
+
+export class InternalEffect implements Effect {
+  get gpu(): GPURenderPipeline | undefined { return effectImpl(this).gpu; }
+
+  constructor(device: Device, source: string, opts: EffectOptions = {}, cache?: BindGroupCache, defaultTarget?: Target, pipelineStore?: PipelineStore, shaderModules?: ShaderModuleCache, pipelineLayouts?: PipelineLayoutCache, errorSink?: ValidationErrorSink, trackSettled?: (promise: Promise<unknown>) => void) {
+    const shader = fullscreenSource(source);
+    const impl = new InternalDraw(device, shader, { shader, set: opts.set, label: opts.label ?? "effect", blend: opts.blend, writeMask: opts.writeMask }, cache, defaultTarget, pipelineStore, shaderModules, pipelineLayouts, errorSink, trackSettled);
+    effectImpls.set(this, impl);
+  }
+
+  set(values: SetBag): this { effectImpl(this).set(values); return this; }
+  draw(target: Target | DrawCallOptions = {}): void { effectImpl(this).draw(isTarget(target) ? { target } : target); }
+  compile(target?: CompileTarget): Promise<this> { return effectImpl(this).compile(target).then(() => this); }
+  compileSync(target?: CompileTarget): this { effectImpl(this).compileSync(target); return this; }
+
+  /** @internal FramePass delegates here; not part of the frozen public Effect surface. */
+  encode(pass: GPURenderPassEncoder, target: Target, opts: DrawCallOptions = {}, claimValidation?: (result: ClaimedGroupValidationResult) => void): void {
+    encodeDraw(effectImpl(this), pass, target, opts, claimValidation);
+  }
+
+  /**
+   * Frame drawable protocol: an effect is encoded as its underlying draw, so it reuses that draw's
+   * protocol object — same encode path, same depth/stencil metadata for read-only passes.
+   */
+  get [FRAME_DRAWABLE](): FrameDrawableProtocol { return effectImpl(this)[FRAME_DRAWABLE]; }
+}
+
+export function effectDraw(effect: Effect): InternalDraw { return effectImpl(effect); }
+
+function effectImpl(effect: Effect): InternalDraw {
+  const impl = effectImpls.get(effect);
+  if (!impl) throw new TypeError("Invalid Effect instance");
+  return impl;
+}
+
+export function fullscreenSource(source: string): string {
+  if (hasVertexEntry(source)) return source;
+  return `
+struct AIGpuFullscreenVertexOut {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+};
+@vertex fn aigpu_fullscreen_vs(@builtin(vertex_index) vi: u32) -> AIGpuFullscreenVertexOut {
+  var pos = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var uv = array<vec2f, 3>(vec2f(0.0, 1.0), vec2f(2.0, 1.0), vec2f(0.0, -1.0));
+  var out: AIGpuFullscreenVertexOut;
+  out.position = vec4f(pos[vi], 0.0, 1.0);
+  out.uv = uv[vi];
+  return out;
+}
+${source}`;
+}
+
+function hasVertexEntry(source: string): boolean {
+  return reflectSource(source, "effect.wgsl").entryPoints.some((entry) => entry.stage === "vertex");
+}

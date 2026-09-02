@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, aigpu-independent]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 9.15.4
+  NODE_VERSION: 22
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate filenames
+        run: pnpm check:filenames
+      - name: Validate GitHub workflows
+        run: pnpm validate:workflows
+      - name: Validate agent skill and plugin
+        run: pnpm validate:agent-integrations
+      - name: Build workspace
+        run: pnpm build
+      - name: Typecheck workspace and fixtures
+        run: pnpm typecheck
+      - name: Run fast tests
+        run: pnpm test:fast
+      - name: Check bundle budgets
+        run: pnpm bundle-check
+      - name: Verify generated docs are readable
+        run: pnpm check:skill-drift
+
+  full-suite:
+    name: Full test suite
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Run all Vitest tests
+        run: pnpm exec vitest run
+
+  wgsl-loaders:
+    name: WGSL loaders and runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec vitest run packages/wgsl/tests/webpack-real.test.ts packages/wgsl/tests/vite-real.test.ts packages/wgsl/tests/runtime-cjs-require.test.ts packages/wgsl/tests/validation-real-device.test.ts
+
+  package-smoke:
+    name: Package smoke test
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Pack publishable packages
+        run: mkdir -p /tmp/aigpu-packages && pnpm -r pack --pack-destination /tmp/aigpu-packages
+      - name: Inspect package archives
+        run: |
+          set -eu
+          test -n "$(find /tmp/aigpu-packages -name '*.tgz' -print -quit)"
+          find /tmp/aigpu-packages -name '*.tgz' -print | sort
+          for archive in /tmp/aigpu-packages/*.tgz; do
+            tar -tzf "$archive" >/dev/null
+          done
+
+  docker-gpu:
+    name: Software WebGPU validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Build software GPU test image
+        run: docker build -t aigpu-test-dev:ci -f infra/test-docker/Dockerfile.dev .
+      - name: Run real WebGPU validation through Dawn/Lavapipe
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            -e AIGPU_DOCKER_TEST=1 -e AIGPU_VALIDATE=require aigpu-test-dev:ci \
+            sh -lc 'Xvfb :99 -screen 0 1024x768x24 >/tmp/xvfb.log 2>&1 & xp=$!; \
+              DISPLAY=:99 pnpm exec vitest run packages/adapter-node/tests packages/wgsl/tests/validation-real-device.test.ts packages/aigpu-api/tests/gpu; \
+              s=$?; kill "$xp"; exit "$s"'

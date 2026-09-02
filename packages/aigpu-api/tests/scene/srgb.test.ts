@@ -1,0 +1,48 @@
+import { expect, test } from "vitest";
+import { srgb } from "../../src/scene/geometry-src/index.ts";
+
+test("converts black hex to linear black", () => {
+  expect(srgb(0x000000)).toEqual([0, 0, 0]);
+});
+
+test("converts white hex to linear white", () => {
+  const color = srgb(0xffffff);
+  expect(color[0]).toBeCloseTo(1, 12);
+  expect(color[1]).toBeCloseTo(1, 12);
+  expect(color[2]).toBeCloseTo(1, 12);
+});
+
+test("converts orange hex to linear color", () => {
+  const color = srgb(0xff6600);
+  expect(color[0]).toBeCloseTo(1, 5);
+  expect(color[1]).toBeCloseTo(0.13287, 5);
+  expect(color[2]).toBe(0);
+});
+
+test("converts sRGB component triples to linear color", () => {
+  const color = srgb([0.5, 0.5, 0.5]);
+  expect(color[0]).toBeCloseTo(0.21404, 5);
+  expect(color[1]).toBeCloseTo(0.21404, 5);
+  expect(color[2]).toBeCloseTo(0.21404, 5);
+});
+
+test("keeps zero component triples finite", () => {
+  const color = srgb([0, 0, 0]);
+  expect(color).toEqual([0, 0, 0]);
+  expect(color.every(Number.isFinite)).toBe(true);
+});
+
+test("srgb accepts #rrggbb hex strings and matches the packed-number form", () => {
+  expect(srgb("#ff6600")).toEqual(srgb(0xff6600));
+  expect(srgb("3b82f6")).toEqual(srgb(0x3b82f6));
+});
+
+test("srgb rejects malformed hex strings with a coded error", () => {
+  let code: string | undefined;
+  try {
+    srgb("#12345" as never);
+  } catch (error) {
+    code = (error as { code?: string }).code;
+  }
+  expect(code).toBe("AIGPU-CORE-INVALID-USAGE");
+});

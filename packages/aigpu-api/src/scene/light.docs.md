@@ -1,0 +1,279 @@
+# directionalLight
+
+Creates a directional (sun-style) light node. Direction is explicit, not transform-derived.
+
+## Import
+
+```ts
+import { directionalLight } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+declare function directionalLight(options?: import("aigpu/scene").DirectionalLightOptions): import("aigpu/scene").DirectionalLight;
+```
+
+## Parameters
+
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| options.direction | `Vec3Like` | ✖ | `[0, -1, 0]` | World-space direction the light travels toward. |
+| options.color | `Vec3Like` | ✖ | `[1, 1, 1]` | Linear RGB. |
+| options.intensity | `number` | ✖ | `1` | Must be `>= 0`. |
+
+**Returns:** `DirectionalLight` node with `kind: "directional-light"`.
+**Throws:** `AIGPU-SCENE-VALUE-INVALID` for malformed vectors or negative intensity.
+
+## Examples
+
+```ts
+import { directionalLight, scene } from "aigpu/scene";
+
+const sun = directionalLight({ direction: [-1, -2, -1], intensity: 1.2 });
+scene().add(sun);
+sun.set({ intensity: 0.8 });
+```
+
+## Notes
+
+- Lit materials (`lambertMaterial`, custom lit shaders) read lights collected from the tree by the renderer.
+- **See also:** `DirectionalLight`, `ambientLight`, `lambertMaterial`.
+
+---
+
+# DirectionalLight
+
+Class returned by `directionalLight()`. Extends `SceneNode`.
+
+## Import
+
+```ts
+import type { DirectionalLight } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+declare class DirectionalLight {
+  set(values: import("aigpu/scene").DirectionalLightValues): this;
+  readonly direction: Float32Array;
+  readonly color: Float32Array;
+  readonly intensity: number;
+}
+```
+
+## Examples
+
+```ts
+import { directionalLight } from "aigpu/scene";
+
+directionalLight().set({ direction: [1, -1, 0], color: [1, 0.9, 0.8] });
+```
+
+## Notes
+
+- `direction` and `color` keep stable array identities; mutate via `set()`.
+- **See also:** `directionalLight`, `DirectionalLightValues`.
+
+---
+
+# DirectionalLightOptions
+
+Options accepted by `directionalLight()`: light parameters plus `NodeOptions`.
+
+## Import
+
+```ts
+import type { DirectionalLightOptions } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+interface DirectionalLightOptions {
+  readonly direction?: import("aigpu/scene").Vec3Like;
+  readonly color?: import("aigpu/scene").Vec3Like;
+  readonly intensity?: number;
+  readonly label?: string;
+  readonly children?: readonly import("aigpu/scene").SceneNode[];
+}
+```
+
+## Examples
+
+```ts
+import { directionalLight } from "aigpu/scene";
+
+directionalLight({ direction: [0, -1, -1], intensity: 2, label: "key" });
+```
+
+## Notes
+
+- **See also:** `directionalLight`, `NodeOptions`.
+
+---
+
+# DirectionalLightValues
+
+Values accepted by `DirectionalLight.set()`.
+
+## Import
+
+```ts
+import type { DirectionalLightValues } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+interface DirectionalLightValues {
+  readonly direction?: import("aigpu/scene").Vec3Like;
+  readonly color?: import("aigpu/scene").Vec3Like;
+  readonly intensity?: number;
+}
+```
+
+## Examples
+
+```ts
+import { directionalLight } from "aigpu/scene";
+
+directionalLight().set({ intensity: 0.5 });
+```
+
+## Notes
+
+- **See also:** `DirectionalLight`, `NodeTransformValues`.
+
+---
+
+# ambientLight
+
+Creates an ambient fill light node applied uniformly to lit materials.
+
+## Import
+
+```ts
+import { ambientLight } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+declare function ambientLight(options?: import("aigpu/scene").AmbientLightOptions): import("aigpu/scene").AmbientLight;
+```
+
+## Examples
+
+```ts
+import { ambientLight, scene } from "aigpu/scene";
+
+scene().add(ambientLight({ color: [0.4, 0.45, 0.6], intensity: 0.3 }));
+```
+
+## Notes
+
+- Combine with `directionalLight()` to soften shadows on lambert-shaded meshes.
+- **See also:** `AmbientLight`, `directionalLight`.
+
+---
+
+# AmbientLight
+
+Class returned by `ambientLight()`. Extends `SceneNode`.
+
+## Import
+
+```ts
+import type { AmbientLight } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+declare class AmbientLight {
+  set(values: import("aigpu/scene").AmbientLightValues): this;
+  readonly color: Float32Array;
+  readonly intensity: number;
+}
+```
+
+## Examples
+
+```ts
+import { ambientLight } from "aigpu/scene";
+
+ambientLight().set({ intensity: 0.2 });
+```
+
+## Notes
+
+- **See also:** `ambientLight`, `AmbientLightValues`.
+
+---
+
+# AmbientLightOptions
+
+Options accepted by `ambientLight()`.
+
+## Import
+
+```ts
+import type { AmbientLightOptions } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+interface AmbientLightOptions {
+  readonly color?: import("aigpu/scene").Vec3Like;
+  readonly intensity?: number;
+  readonly label?: string;
+}
+```
+
+## Examples
+
+```ts
+import { ambientLight } from "aigpu/scene";
+
+ambientLight({ intensity: 0.25 });
+```
+
+## Notes
+
+- **See also:** `ambientLight`, `NodeOptions`.
+
+---
+
+# AmbientLightValues
+
+Values accepted by `AmbientLight.set()`.
+
+## Import
+
+```ts
+import type { AmbientLightValues } from "aigpu/scene";
+```
+
+## Signature
+
+```ts
+interface AmbientLightValues {
+  readonly color?: import("aigpu/scene").Vec3Like;
+  readonly intensity?: number;
+}
+```
+
+## Examples
+
+```ts
+import { ambientLight } from "aigpu/scene";
+
+ambientLight().set({ color: [1, 1, 1] });
+```
+
+## Notes
+
+- **See also:** `AmbientLight`.

@@ -1,0 +1,42 @@
+{
+  "name": "@aigpu/cli",
+  "version": "0.2.1",
+  "description": "Offline AIGpu CLI for docs, WGSL utilities, local examples, and MCP.",
+  "keywords": ["webgpu", "graphics", "rendering", "cli", "wgsl", "aigpu", "agents"],
+  "homepage": "https://github.com/hautlys/AIGpu",
+  "bugs": { "url": "https://github.com/hautlys/AIGpu/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/hautlys/AIGpu.git", "directory": "packages/aigpu-cli" },
+  "license": "MIT",
+  "author": "Matias Gonzalez <matiasngf@hotmail.com>",
+  "private": true,
+  "type": "module",
+  "bin": { "aigpu": "./bin/aigpu.js" },
+  "files": ["bin", "lib", "README.md", "LICENSE"],
+  "scripts": {
+    "generate:docs": "node lib/docs/generate/cli.js && node ../aigpu-api/scripts/copy-cli.mjs",
+    "check:skill-drift": "node lib/docs/generate/check-drift.js",
+    "prepack": "node lib/docs/generate/cli.js",
+    "test": "cd ../.. && vitest run packages/aigpu-cli"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@aigpu/adapter-node": ">=0.1.6 <1.0.0",
+    "@aigpu/wgsl": ">=0.1.6 <1.0.0",
+    "aigpu": ">=0.1.6 <1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@aigpu/adapter-node": { "optional": true },
+    "@aigpu/wgsl": { "optional": true },
+    "aigpu": { "optional": true }
+  },
+  "devDependencies": {
+    "@aigpu/adapter-node": "workspace:*",
+    "@aigpu/wgsl": "workspace:*",
+    "aigpu": "workspace:*"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@aigpu/example-agent-ops-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "Framework-free multi-agent operations dashboard model.",
+  "scripts": {"test": "cd ../.. && vitest run examples/agent-ops-dashboard/src"},
+  "dependencies": {"aigpu": "workspace:*"}
+}

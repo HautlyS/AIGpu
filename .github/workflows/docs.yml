@@ -1,0 +1,74 @@
+name: Documentation and agent integrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "skills/**"
+      - "plugins/**"
+      - "scripts/**"
+      - "packages/aigpu-cli/**"
+      - "packages/aigpu-api/src/**/*.docs.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/**"
+      - "skills/**"
+      - "plugins/**"
+      - "scripts/**"
+      - "packages/aigpu-cli/**"
+      - "packages/aigpu-api/src/**/*.docs.md"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 9.15.4
+  NODE_VERSION: 22
+
+jobs:
+  docs:
+    name: Generate and validate docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate local docs manifest and skill
+        run: pnpm docs:generate
+      - name: Check generated docs drift
+        run: pnpm check:skill-drift
+      - name: Validate portable Agent Skills package
+        run: |
+          pnpm validate:agent-integrations
+          npx -y skills add ./ --list
+      - name: Validate documentation snippets
+        run: node scripts/validate-docs-structure.mjs
+      - name: Publish generated docs as a review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aigpu-generated-docs-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            skills/aigpu/SKILL.md
+            skills/aigpu/references/
+            packages/aigpu-cli/lib/generated/docs-manifest.generated.js

@@ -1,0 +1,155 @@
+import { ValidationError } from "./errors.ts";
+import { textureUsageFlags } from "./gpu-constants.ts";
+import { isMockGPUTexture } from "./mock-gpu-storage.ts";
+import { decodeTextureFloats, readMockTextureBytes, textureReadbackFormat } from "./readback.ts";
+import { createResourceIdentity, DestroySignal, type ResourceDestroyCallback, type ResourceIdentity, type UnsubscribeResourceDestroy } from "./resource-lifecycle.ts";
+import type { Device } from "./device.ts";
+import type { TextureOptions } from "./types.ts";
+
+const textureBrand = Symbol.for("aigpu/Texture");
+const textureResizeLock = Symbol.for("aigpu/Texture/resizeLock");
+
+type TextureOwnership = "owned" | "external";
+
+export class Texture {
+  readonly [textureBrand] = true;
+  private readonly destroySignal = new DestroySignal<Texture>();
+  private readonly identity = createResourceIdentity("texture");
+  private currentGpu: GPUTexture;
+  private currentOptions: TextureOptions;
+  private defaultView: GPUTextureView | null = null;
+  private resizeLock: string | undefined;
+  private destroyed = false;
+
+  constructor(
+    private readonly device: Device,
+    gpu: GPUTexture,
+    options: TextureOptions,
+    private readonly ownership: TextureOwnership = "owned",
+  ) {
+    this.currentGpu = gpu;
+    this.currentOptions = options;
+    Object.defineProperty(this, textureResizeLock, {
+      value: (reason: string) => { this.resizeLock = reason; },
+    });
+  }
+
+  get gpu(): GPUTexture { return this.currentGpu; }
+  get options(): TextureOptions { return this.currentOptions; }
+  get size(): TextureOptions["size"] { return this.options.size; }
+  get format(): GPUTextureFormat { return this.options.format; }
+  get usage(): TextureOptions["usage"] { return this.options.usage; }
+  get mipLevelCount(): number { return this.options.mipLevelCount ?? 1; }
+  get sampleCount(): 1 | 4 { return this.options.sampleCount ?? 1; }
+  get dimension(): GPUTextureDimension { return this.options.dimension ?? "2d"; }
+  get viewFormats(): readonly GPUTextureFormat[] { return this.options.viewFormats ?? []; }
+  get label(): string | undefined { return this.options.label; }
+  get resourceIdentity(): ResourceIdentity { return this.identity; }
+
+  onDestroy(cb: ResourceDestroyCallback<Texture>): UnsubscribeResourceDestroy {
+    return this.destroySignal.onDestroy(this, cb);
+  }
+
+  get view(): GPUTextureView {
+    this.assertAlive();
+    this.defaultView ??= this.createView();
+    return this.defaultView;
+  }
+
+  createView(desc?: GPUTextureViewDescriptor): GPUTextureView {
+    this.assertAlive("Texture.createView");
+    return this.gpu.createView(desc);
+  }
+
+  resize(size: readonly [number, number] | readonly [number, number, number]): boolean {
+    this.assertAlive();
+    if (this.ownership === "external") {
+      throw new ValidationError({
+        code: "AIGPU-CORE-EXTERNAL-TEXTURE",
+        message: "Texture wraps an externally owned GPUTexture and cannot be resized.",
+        where: "Texture.resize",
+      });
+    }
+    if (this.resizeLock) {
+      throw new ValidationError({
+        code: "AIGPU-CORE-TEXTURE-RESIZE-LOCKED",
+        message: this.resizeLock,
+        where: "Texture.resize",
+      });
+    }
+
+    const currentDepth = this.options.size[2] ?? 1;
+    const nextDepth = size[2] ?? currentDepth;
+    if (this.options.size[0] === size[0] && this.options.size[1] === size[1] && currentDepth === nextDepth) return false;
+
+    const nextSize: TextureOptions["size"] = size[2] === undefined && this.options.size[2] === undefined
+      ? [size[0], size[1]]
+      : [size[0], size[1], nextDepth];
+    const nextOptions: TextureOptions = { ...this.options, size: nextSize };
+    const oldGpu = this.gpu;
+    this.currentGpu = this.device.gpu.createTexture(toGPUTextureDescriptor(nextOptions));
+    this.currentOptions = nextOptions;
+    this.defaultView = null;
+    oldGpu.destroy();
+    return true;
+  }
+
+  /**
+   * Raw, unpadded texel bytes in this texture's own format (row stride padding removed).
+   * `byteLength` is `width * height * bytesPerPixel(format)`; `bgra*` bytes are swizzled to RGBA order.
+   * Use `readFloats()` for float formats to get decoded component values.
+   */
+  async read(): Promise<Uint8Array> {
+    this.assertAlive("Texture.read");
+    // Validated before the mock branch: a mock device must reject the same formats a real one does.
+    const info = textureReadbackFormat(this.options.format, "Texture.read");
+    if (isMockGPUTexture(this.gpu)) return readMockTextureBytes(this.gpu.__aigpuMockBytes, this.options.size, info);
+    const result = await this.device.readback.readTexture(this.gpu, this.options.size, this.options.format);
+    // Re-checked after the await: a retained external device can be destroyed mid-readback.
+    this.assertAlive("Texture.read");
+    return result;
+  }
+
+  /**
+   * Texel components decoded to f32, row-major, `width * height * components(format)` long.
+   * `float16`/`float32` formats keep their HDR values (no clamping); `unorm8` formats are
+   * normalized to `[0, 1]` without srgb gamma conversion.
+   */
+  async readFloats(): Promise<Float32Array> {
+    // Validate before the copy so an unsupported format never allocates a staging buffer.
+    textureReadbackFormat(this.options.format, "Texture.readFloats");
+    return decodeTextureFloats(await this.read(), this.options.format);
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.defaultView = null;
+    this.destroySignal.emit(this);
+    if (this.ownership === "external") return;
+    if (!isMockGPUTexture(this.gpu)) this.gpu.destroy();
+  }
+
+  dispose(): void {
+    this.destroy();
+  }
+
+  private assertAlive(where = "Texture"): void {
+    if (this.destroyed) throw new ValidationError({ code: "AIGPU-CORE-TEXTURE-DESTROYED", message: "Texture is destroyed", where });
+    (this.device as unknown as { assertUsable?(where: string): void }).assertUsable?.(where);
+  }
+}
+
+export function toGPUTextureDescriptor(opts: TextureOptions): GPUTextureDescriptor {
+  const desc: GPUTextureDescriptor = {
+    label: opts.label,
+    size: { width: opts.size[0], height: opts.size[1], depthOrArrayLayers: opts.size[2] ?? 1 },
+    format: opts.format,
+    usage: textureUsageFlags(opts.usage),
+  };
+  if (opts.mipLevelCount !== undefined) desc.mipLevelCount = opts.mipLevelCount;
+  if (opts.sampleCount !== undefined) desc.sampleCount = opts.sampleCount;
+  if (opts.dimension !== undefined) desc.dimension = opts.dimension;
+  if (opts.viewFormats !== undefined) desc.viewFormats = [...opts.viewFormats];
+  return desc;
+}

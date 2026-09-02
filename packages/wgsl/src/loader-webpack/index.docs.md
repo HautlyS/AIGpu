@@ -1,0 +1,83 @@
+# wgslWebpackLoader
+
+Webpack loader that turns `.wgsl` files into JavaScript modules exporting `ShaderSource` v1 objects. Use it when webpack should inline WGSL and resolve aigpu WGSL imports during bundling.
+
+## Import
+
+```ts
+import wgslWebpackLoader from "@aigpu/wgsl/loader-webpack";
+```
+
+## Signature
+
+```ts
+interface WgslWebpackLoaderOptions {
+  readonly minify?: boolean | { readonly whitespace?: boolean; readonly identifiers?: "none" | "safe" };
+}
+
+type LoaderContext = {
+  resourcePath?: string;
+  async?: () => (error: Error | null, result?: string) => void;
+  addDependency?: (file: string) => void;
+  getOptions?: () => unknown;
+};
+
+type WgslWebpackLoader = (this: LoaderContext, source: string) => string | void;
+```
+
+## Parameters
+
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| source | string | ✔ | — | Raw WGSL file contents supplied by webpack. Leaf files without top-level imports are emitted directly, optionally minified. Files with top-level imports are resolved from `this.resourcePath`. |
+| this.resourcePath | string | ✖ | `"<webpack>"` for resolver entry fallback | Absolute path to the `.wgsl` file. Needed for relative import resolution and dependency reporting. |
+| this.async | `() => callback` | ✖ | synchronous mode | Required only when the WGSL source has top-level imports. Without async mode, imports throw `AIGPU-WGSL-RUNTIME-IMPORT`. |
+| this.addDependency | `(file: string) => void` | ✖ | no explicit extra dependencies | Called as each transitive dependency is discovered, before it is loaded, so webpack invalidates on imported `.wgsl` changes even when the current resolution fails. |
+| this.getOptions | `() => unknown` | ✖ | `{}` | Reads `options.minify` when present. Unknown options are ignored. |
+| options.minify | `boolean | MinifyOptions` | ✖ | `false` | `true` means `{ whitespace: true, identifiers: "safe" }`; object form defaults to `{ whitespace: true, identifiers: "none" }`. |
+
+**Returns:** `string | void` — for leaf shaders, returns JavaScript module source synchronously. For import graphs, returns `void` and passes JavaScript module source to webpack's async callback.
+
+**Throws:** `AIGPU-WGSL-RUNTIME-IMPORT` when a WGSL file contains imports but the loader context does not provide async mode — enable webpack asynchronous loader execution.
+**Throws:** Any `resolveShader()` `AIGPU-WGSL-*` or `AIGPU-RESOLVE-MODULE-BINDING` error when import graph resolution fails — fix the WGSL import graph, module purity, or minify options.
+**Throws:** `AIGPU-WGSL-MINIFY-IDENTIFIERS` or `AIGPU-WGSL-MINIFY-BLOCK` when minification options/source are invalid for a leaf file — pass a valid minify mode or fix unterminated comments.
+
+## Examples
+
+```ts
+const config = {
+  module: {
+    rules: [
+      {
+        test: /\.wgsl$/,
+        loader: "@aigpu/wgsl/loader-webpack",
+        options: { minify: true },
+      },
+    ],
+  },
+};
+
+export default config;
+```
+
+```ts
+import type { ShaderSource } from "@aigpu/wgsl";
+
+const shader: ShaderSource = {
+  version: 1,
+  wgsl: "@compute @workgroup_size(1) fn main() {}",
+};
+
+console.log(shader.version);
+```
+
+## Notes
+
+- **Framework setup lives in a guide, not here.** For `vite.config.ts` (other bundlers rules or the `webpack()` hook), the ambient `.d.ts` that types `import shader from "./x.wgsl"`, and the client component that owns the canvas, read `npx aigpu docs cat bundlers.md`.
+- TypeScript needs an ambient declaration before it accepts a `.wgsl` import. `@aigpu/wgsl` ships one: add `/// <reference types="@aigpu/wgsl/wgsl-types" />` to any `.d.ts` in your project.
+- Loader output is `ShaderSource` v1: default export `{ version: 1, wgsl: "..." }`, not a bare string and not a reflection/binding map.
+- Imported files are registered with webpack before they are loaded. If a transient edit causes resolution to fail, a later valid save can therefore invalidate and rebuild the failed importer without restarting the dev server.
+- A leaf WGSL file may declare entry resources. The imported-module purity rule is enforced only when the file imports other modules and `resolveShader()` sees a graph.
+- **The loader never validates WGSL, in any mode, for either leaf files or import graphs.** It calls `resolveShader({ validate: false })` for imported graphs — parsing, purity checks, DCE, mangling, and optional minification still run, but the device-backed `createShaderModule` check does not. Leaf files (no imports) never call `resolveShader()` at all and are emitted directly, so they are not merely unvalidated — they receive no semantic processing beyond the raw text. There is no loader option to opt into validation; a `validate` key in the loader options is silently ignored. `npx Vite build`/`Vite dev` (webpack or other bundlers) will happily compile and ship invalid WGSL. The validation gate is `npx aigpu check --require-validation <file>` — run it in CI or as a pre-commit hook; see `npx aigpu docs cat cli.docs.md`.
+- Do not put `@group/@binding` declarations in shared WGSL modules. Put resources in the entry file and export shared structs/functions from modules.
+- **See also:** `ShaderSource`, `resolveShader`, `wgslVitePlugin`, and the `bundlers` guide (`npx aigpu docs cat bundlers.md`).

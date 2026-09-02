@@ -1,0 +1,16 @@
+{
+  "name": "@aigpu/example-visual-gallery",
+  "private": true,
+  "type": "module",
+  "description": "Modern, anime, psychedelic, calm, and enterprise GPU animation recipes for AIGpu agents.",
+  "scripts": {
+    "test": "cd ../.. && vitest run examples/visual-gallery/src"
+  },
+  "dependencies": {
+    "aigpu": "workspace:*",
+    "@aigpu/wgsl": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

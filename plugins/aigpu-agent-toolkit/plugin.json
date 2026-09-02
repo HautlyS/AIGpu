@@ -1,0 +1,13 @@
+{
+  "name": "aigpu-agent-toolkit",
+  "version": "0.1.0",
+  "description": "Framework-agnostic AIGpu skills, references, and validation tooling for coding agents.",
+  "license": "MIT",
+  "skill": "../../skills/aigpu-agent-toolkit/SKILL.md",
+  "agents": ["claude-code", "opencode", "codex", "cursor", "github-copilot", "cline", "gemini-cli"],
+  "commands": {
+    "validate": "node scripts/validate-agent-integrations.mjs",
+    "install": "npx -y skills add ./ --skill aigpu-agent-toolkit --agent '*' -y",
+    "install:common": "npx -y skills add ./ --skill aigpu-agent-toolkit -a claude-code -a opencode -a codex -y"
+  }
+}

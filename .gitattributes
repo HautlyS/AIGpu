@@ -1,0 +1,4 @@
+# Keep shader and documentation sources stable across platforms.
+*.wgsl text eol=lf
+*.docs.md text eol=lf
+*.md text eol=lf

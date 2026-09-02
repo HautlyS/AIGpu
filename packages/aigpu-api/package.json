@@ -1,0 +1,132 @@
+{
+  "name": "aigpu",
+  "version": "0.3.1",
+  "description": "GPU animations for AI agents: a small, explicit WebGPU and WGSL runtime.",
+  "keywords": [
+    "webgpu",
+    "graphics",
+    "rendering",
+    "aigpu",
+    "ai",
+    "agents",
+    "animation"
+  ],
+  "homepage": "https://github.com/hautlys/AIGpu",
+  "bugs": {
+    "url": "https://github.com/hautlys/AIGpu/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hautlys/AIGpu.git",
+    "directory": "packages/aigpu-api"
+  },
+  "license": "MIT",
+  "author": "Matias Gonzalez <matiasngf@hotmail.com>",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./mock": {
+      "types": "./dist/mock.d.ts",
+      "import": "./dist/mock.js",
+      "default": "./dist/mock.js"
+    },
+    "./scene": {
+      "types": "./dist/scene.d.ts",
+      "import": "./dist/scene.js",
+      "default": "./dist/scene.js"
+    },
+    "./client": {
+      "types": "./client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "default": "./dist/core.js"
+    },
+    "./dom": {
+      "types": "./dist/dom.d.ts",
+      "import": "./dist/dom.js",
+      "default": "./dist/dom.js"
+    },
+    "./tools": {
+      "types": "./dist/agent-tools.d.ts",
+      "import": "./dist/agent-tools.js",
+      "default": "./dist/agent-tools.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "client.d.ts",
+    "bin",
+    "dist",
+    "!dist/tsconfig.tsbuildinfo",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b && node scripts/copy-cli.mjs",
+    "test": "cd ../.. && vitest run packages/aigpu-api",
+    "prepack": "pnpm --dir ../aigpu-cli generate:docs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "@aigpu/adapter-mock": "workspace:*",
+    "@aigpu/adapter-node": "workspace:*",
+    "@aigpu/core": "workspace:*",
+    "@aigpu/wgsl": "workspace:*",
+    "@aigpu/wgsl-std": "workspace:*",
+    "@webgpu/types": "^0.1.69",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "wgpu-matrix": "^3.4.2",
+    "zod": "^4.4.3"
+  },
+  "aigpuExportBundleBudgetNote": "Gzip ceilings use 512-byte granularity: each budget is the next 512-byte multiple strictly above the measured size. Regenerate with `pnpm bundle-check --update`. aigpuBundleAudience/aigpuExportBundleAudiences select the gate: \"client\" entries ship to browsers and fail on any byte over budget; \"tooling\" entries (loaders, Node runtime, CLI, package tarballs) only warn until growth passes aigpuBundleBudgetGrowthThreshold (default 5%). Tarballs measure published dist bytes with sourcemap sourcesContent stripped and *.docs.md excluded.",
+  "aigpuExportBundleAudiences": {
+    ".": "client",
+    "./node": "tooling",
+    "./mock": "tooling",
+    "./scene": "client",
+    "./client": "client",
+    "./core": "client",
+    "./dom": "client",
+    "./tools": "client"
+  },
+  "aigpuExportBundleBudgetsGzipBytes": {
+    ".": 40960,
+    "./node": 40960,
+    "./mock": 40960,
+    "./scene": 12800,
+    "./client": 512,
+    "./core": 3584,
+    "./dom": 28160,
+    "./tools": 5120
+  },
+  "bin": {
+    "aigpu": "./bin/aigpu.js"
+  },
+  "aigpuExperienceBundleBudgetsGzipBytes": {
+    "init-only": 1024,
+    "effect-only": 25600,
+    "triangle-low-level": 28672,
+    "draw-recipe-box": 30208,
+    "full-root": 41472
+  },
+  "aigpuSceneBundleBudgetNote": "The scene barrel retains all recipe builders after the geometry redesign; direct primitive imports retain only their selected mesh, as the experience fixtures assert."
+}

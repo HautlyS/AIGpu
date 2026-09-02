@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "rewriteRelativeImportExtensions": true,
+    "allowImportingTsExtensions": true,
+    // Required until wgpu-matrix ships NodeNext-compatible .d.ts relative imports.
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "@webgpu/types"]
+  }
+}

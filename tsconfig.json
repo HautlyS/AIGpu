@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/wgsl" },
+    { "path": "./packages/core" },
+    { "path": "./packages/adapter-mock" },
+    { "path": "./packages/adapter-node" },
+    { "path": "./packages/render" },
+    { "path": "./packages/aigpu-api" },
+    { "path": "./packages/aigpu-react" },
+    { "path": "./packages/aigpu-vue" },
+    { "path": "./packages/aigpu-svelte" }
+  ]
+}

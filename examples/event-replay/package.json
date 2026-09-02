@@ -1,0 +1,8 @@
+{
+  "name": "@aigpu/example-event-replay",
+  "private": true,
+  "type": "module",
+  "description": "Framework-free recording and replay of AIGpu agent events.",
+  "scripts": {"test": "cd ../.. && vitest run examples/event-replay/src"},
+  "dependencies": {"aigpu": "workspace:*"}
+}

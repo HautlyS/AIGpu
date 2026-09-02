@@ -1,0 +1,52 @@
+{
+  "name": "@aigpu/adapter-mock",
+  "version": "0.3.1",
+  "description": "Mock GPU adapter for testing aigpu code without real WebGPU hardware.",
+  "keywords": [
+    "webgpu",
+    "graphics",
+    "rendering",
+    "mock",
+    "testing",
+    "adapter"
+  ],
+  "homepage": "https://github.com/hautlys/AIGpu",
+  "bugs": {
+    "url": "https://github.com/hautlys/AIGpu/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hautlys/AIGpu.git",
+    "directory": "packages/adapter-mock"
+  },
+  "license": "MIT",
+  "author": "Matias Gonzalez <matiasngf@hotmail.com>",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/tsconfig.tsbuildinfo",
+    "src/**/*.docs.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@aigpu/core": "workspace:*"
+  },
+  "aigpuBundleAudience": "tooling",
+  "aigpuBundleBudgetGzipBytes": 2560,
+  "aigpuBundleBudgetNote": "Gzip ceilings use 512-byte granularity: each budget is the next 512-byte multiple strictly above the measured size. Regenerate with `pnpm bundle-check --update`. aigpuBundleAudience/aigpuExportBundleAudiences select the gate: \"client\" entries ship to browsers and fail on any byte over budget; \"tooling\" entries (loaders, Node runtime, CLI, package tarballs) only warn until growth passes aigpuBundleBudgetGrowthThreshold (default 5%). Tarballs measure published dist bytes with sourcemap sourcesContent stripped and *.docs.md excluded."
+}

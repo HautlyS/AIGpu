@@ -1,0 +1,61 @@
+name: Release verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to verify
+        required: false
+        default: main
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-verify-${{ github.event.release.tag_name || inputs.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify and package release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test:fast
+      - run: pnpm bundle-check
+      - run: pnpm check:filenames
+      - name: Validate package metadata and skills
+        run: |
+          pnpm validate:agent-integrations
+          npx -y skills add ./ --list
+      - name: Create package archives
+        run: mkdir -p release-artifacts && pnpm -r pack --pack-destination release-artifacts
+      - name: Generate npm package SBOM
+        run: npm sbom --sbom-format cyclonedx --sbom-type package > release-artifacts/aigpu-sbom.cdx.json
+      - name: Create checksums
+        working-directory: release-artifacts
+        run: sha256sum -- *.tgz *.json > SHA256SUMS
+      - name: Upload release verification bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aigpu-release-verification-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: release-artifacts/

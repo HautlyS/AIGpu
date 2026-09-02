@@ -1,0 +1,20 @@
+{
+  "name": "@aigpu/svelte",
+  "version": "0.1.0",
+  "description": "Dependency-free Svelte action for AIGpu agent animations.",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {"build": "tsc -b", "test": "cd ../.. && vitest run packages/aigpu-svelte"},
+  "peerDependencies": {"aigpu": "^0.3.1"},
+  "devDependencies": {"aigpu": "workspace:*", "typescript": "^5.7.3", "vitest": "^3.2.7"}
+}
