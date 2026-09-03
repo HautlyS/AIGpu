@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "examples/*"
+  - "website"
 
 overrides:
   vite: ^6.4.3

@@ -5,6 +5,8 @@ on:
     branches: [main, master]
     paths:
       - "website/**"
+      - "packages/aigpu-api/**"
+      - "packages/hautly-entity/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -30,23 +32,25 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Validate static showcase
-        run: |
-          test -s website/index.html
-          test -s website/styles.css
-          test -s website/app.js
-          grep -q "hautlys/AIGpu" website/index.html
-          grep -q "AIGpu" website/index.html
-      - name: Add GitHub Pages marker
-        run: touch website/.nojekyll
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build website
+        run: pnpm --filter @aigpu/website build
+      - name: Add GitHub Pages markers
+        run: touch website/dist/.nojekyll
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: website
+          path: website/dist
 
   deploy:
     name: Deploy showcase
