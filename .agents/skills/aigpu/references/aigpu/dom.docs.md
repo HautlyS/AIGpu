@@ -81,8 +81,8 @@ Call `destroy()` when the canvas leaves the document. It is idempotent. Calling 
 Install only the adapter for the framework in your application:
 
 ```sh
-npm install aigpu @aigpu/react react
-npm install aigpu @aigpu/vue vue
+npm install aigpu @aigpu/react
+npm install aigpu @aigpu/vue
 npm install aigpu @aigpu/svelte
 ```
 

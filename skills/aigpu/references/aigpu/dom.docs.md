@@ -2,8 +2,8 @@
 
 ---
 title: Framework-agnostic canvas mounting
-summary: Mount AIGpu agent animations from plain HTML, React, Vue, Svelte, or any lifecycle system through one DOM controller with visibility gating and auto-resize.
-keywords: mountAgentCanvas, mountAgentCanvasSelector, framework agnostic, html javascript, react, vue, svelte, lifecycle, canvas, dispose, visibility, IntersectionObserver, autoResize, ResizeObserver
+summary: Mount AIGpu agent animations from plain HTML, React, Vue, Svelte, or any lifecycle system through one DOM controller.
+keywords: mountAgentCanvas, mountAgentCanvasSelector, framework agnostic, html javascript, react, vue, svelte, lifecycle, canvas, dispose
 ---
 
 # Framework-agnostic canvas mounting
@@ -16,8 +16,6 @@ import { mountAgentCanvas } from "aigpu";
 const controller = mountAgentCanvas(document.querySelector("canvas")!, {
   initial: { status: "thinking", activity: 0.7 },
   surface: { dpr: [1, 2], autoResize: true },
-  visibility: { rootMargin: "200px" },
-  autoResize: true,
 });
 
 controller.set({ status: "working", progress: 0.45 });
@@ -26,33 +24,6 @@ controller.destroy();
 ```
 
 The controller owns the GPU only when it creates it. Pass `gpu` to share an existing context; in that mode `destroy()` releases the surface and loop but does not dispose the shared GPU.
-
-## Visibility gating
-
-When `visibility` is not `false`, `mountAgentCanvas` creates an `IntersectionObserver` that pauses the frame loop when the canvas scrolls out of view and resumes it on re-entry. This saves GPU and CPU work for off-screen canvases.
-
-```ts
-// Default: pause when 200px out of view
-mountAgentCanvas(canvas, { visibility: true });
-
-// Custom margin
-mountAgentCanvas(canvas, { visibility: { rootMargin: "300px" } });
-
-// Disabled
-mountAgentCanvas(canvas, { visibility: false });
-```
-
-## Auto-resize
-
-When `autoResize` is not `false`, the canvas automatically resizes to fill its CSS layout box on every frame tick. This uses a `ResizeObserver` internally (same as `surface(gpu, canvas, { autoResize: true })`).
-
-```ts
-// Enabled by default for layout-backed canvases
-mountAgentCanvas(canvas, { autoResize: true });
-
-// Disabled
-mountAgentCanvas(canvas, { autoResize: false });
-```
 
 ## Browser lifecycle
 
@@ -68,8 +39,6 @@ Call `destroy()` when the canvas leaves the document. It is idempotent. Calling 
     label: "html-agent",
     initial: { status: "thinking" },
     surface: { dpr: [1, 2] },
-    visibility: { rootMargin: "200px" },
-    autoResize: true,
   });
   window.addEventListener("agent:event", (event) => agent.set(event.detail));
   window.addEventListener("pagehide", () => agent.destroy(), { once: true });
@@ -81,8 +50,8 @@ Call `destroy()` when the canvas leaves the document. It is idempotent. Calling 
 Install only the adapter for the framework in your application:
 
 ```sh
-npm install aigpu @aigpu/react react
-npm install aigpu @aigpu/vue vue
+npm install aigpu @aigpu/react
+npm install aigpu @aigpu/vue
 npm install aigpu @aigpu/svelte
 ```
 

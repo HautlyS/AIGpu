@@ -5,9 +5,9 @@ description: >-
   aigpu/mock, aigpu/scene, and aigpu/client. Use @aigpu/render/inspect, /utils, /edit,
   and /perf only as slim tooling subpaths. Bundles performance guides and the API
   reference; load one doc at a time.
-aigpuVersion: 0.3.2
-gitSha: HEAD
-generatedAt: 2026-09-02T21:30:00.000Z
+aigpuVersion: 0.3.1
+gitSha: 0f17fa13e169c1ca151f915027fb121cb8836b65
+generatedAt: 2026-09-03T01:44:16.194Z
 ---
 
 # aigpu
@@ -35,25 +35,6 @@ npx -y aigpu docs cat <symbol>    # print one doc, e.g. `cat Frame`, `cat perfor
 - **Passes** — A pass is a render-pass section inside a frame.  `references/guides/concepts-passes.docs.md`
 - **Frames** — A frame is one unit of GPU work.  `references/guides/concepts-frames.docs.md`
 - **Render bundles** — A render loop re-encodes every pipeline, bind group, and draw on every tick — even when nothing changed.  `references/guides/concepts-render-bundles.docs.md`
-- **Visibility gating** — `mountAgentCanvas()` pauses the frame loop when the canvas scrolls out of view via IntersectionObserver.  `references/aigpu/dom.docs.md`
-
-## Hautly entity integration
-
-The `@hautly/entity` package uses AIGpu for GPU-accelerated rendering of alive ASCII orb companions. The WebGPU bridge (`hautly-webgpu.ts`) dynamically imports `aigpu` for the GPU glow layer while keeping it optional.
-
-```ts
-// Hautly uses aigpu for GPU glow behind ASCII rendering
-import { createWebGPUHautly } from "@hautly/entity/webgpu";
-
-const h = createWebGPUHautly({
-  target: "#app",
-  form: "orb",
-  gpuGlow: true,     // GPU glow layer via aigpu
-  interactive: true,  // hover/click mesh effects
-});
-```
-
-The `mountAgentCanvas()` visibility gating pattern (IntersectionObserver + autoResize) is the recommended approach for all canvas-based agent animations, including Hautly entities on web pages.
 
 ## CLI reference
 
@@ -113,24 +94,6 @@ Writing or optimizing a shader? Read **performance-model** first, then the rest 
 - `@aigpu/wgsl/reflect-source` — EntryPointInfo, Reflection, reflectSource
 - `@aigpu/wgsl/runtime` — ResolvedShader, ResolveOptions, resolveShader, SourceMap, WGSLAst, WGSLModule
 - `aigpu` — agentAnimation, AgentAnimation, AgentAnimationOptions, AgentAnimationPatch, AgentAnimationState, AgentCanvasController, AgentCanvasOptions, AgentSkills, AgentStatus, Bundle, BundleOptions, BundleRecorder, clock, Clock, Compute, ComputeOptions, createAgentRegistry, createAgentStore, Draw, DrawCallOptions, DrawLayoutOptions, DrawOptions, Effect, EffectOptions, Frame, FrameLoopHandle, FramePass, FramePassOptions, FrameRunner, Geometry, GeometryLike, Gpu, init, InitOptions, mountAgentCanvas, mountAgentCanvasSelector, MountedAgentCanvas, PingPongStorage, PingPongTargets, recordAgentEvents, replayAgentEvents, Roadmap, SharedUniforms, StorageAccess, StorageBuffer, Surface, SurfaceOptions, SurfaceResizeEvent, Target, TargetOptions, TargetTextureOptions, Timer, TimerSpan, Uniform, UniformOptions, Visibility, VisibilityOptions, VisibilityQuery
-
-### AgentCanvasOptions (mountAgentCanvas)
-
-New options on `mountAgentCanvas()` and `AgentCanvasOptions`:
-
-- `visibility` — IntersectionObserver-based viewport gating. When `true` (default), the frame loop pauses when the canvas scrolls out of view and resumes on re-entry. Pass `{ rootMargin?: string }` to set the pre-load margin (default `"200px"`). Set to `false` to disable.
-- `autoResize` — ResizeObserver-based auto-resize. When `true` (default for layout-backed canvases), the canvas automatically resizes to fill its CSS layout box on every frame tick. Set to `false` to disable.
-
-```ts
-import { mountAgentCanvas } from "aigpu";
-
-const controller = mountAgentCanvas(canvas, {
-  initial: { status: "thinking" },
-  visibility: { rootMargin: "300px" }, // pause when 300px out of view
-  autoResize: true,                     // auto-resize to CSS layout
-  surface: { dpr: [1, 2] },
-});
-```
 - `aigpu/core` — AIGpuAdapter, AIGpuError, bind, Buffer, BufferOptions, createBindGroup, createBindGroupLayout, CreateDeviceOptions, createPipelineLayout, createRenderBundle, createSampler, Device, DeviceOptions, Queue, RenderBundleOptions, RenderBundleRecorder, ScalarUniformType, StorageBuffer, StorageBufferOptions, StructuredUniform, StructuredUniformOptions, Texture, TextureOptions, Uniform, UniformField, UniformLayout, UniformLayoutInfo, UniformOptions, UniformPool, UniformPoolOptions, UniformSlot, UniformValues, ValidationError, VectorUniformInput, WgslUniformType
 - `aigpu/mock` — createMockAdapter
 - `aigpu/scene` — ambientLight, AmbientLight, AmbientLightOptions, AmbientLightValues, box, BoxOptions, Camera, CameraVec3, capsule, CapsuleOptions, ColorMaterialOptions, ColorMaterialValues, cone, ConeOptions, cylinder, CylinderOptions, degToRad, directionalLight, DirectionalLight, DirectionalLightOptions, DirectionalLightValues, disk, DiskOptions, dodecahedron, fullscreenQuad, FullscreenQuadOptions, geometries, GeometryKind, group, icosahedron, icosphere, IcosphereOptions, lambertMaterial, LambertMaterial, Mat4, MaterialBlend, mesh, MeshNode, NodeOptions, NodeTransformValues, normalMaterial, NormalMaterial, octahedron, orbit, orbitControls, OrbitControls, OrbitControlsElement, OrbitControlsOptions, OrbitControlsValues, OrbitOptions, orthographicCamera, OrthographicCamera, OrthographicCameraOptions, OrthographicCameraValues, perspectiveCamera, PerspectiveCamera, PerspectiveCameraOptions, PerspectiveCameraValues, plane, PlaneOptions, PolyhedronOptions, QuatLike, ring, RingOptions, scene, SceneCamera, SceneGeometry, SceneGeometryOfKind, SceneMaterial, SceneMaterialKind, SceneNode, SceneNodeKind, shaderMaterial, ShaderMaterial, ShaderMaterialOptions, sphere, SphereOptions, srgb, tetrahedron, torus, TorusOptions, unlitMaterial, UnlitMaterial, Vec3, Vec3Like

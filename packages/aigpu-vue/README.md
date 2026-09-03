@@ -3,7 +3,7 @@
 Optional Vue 3 adapter for AIGpu. The core package remains framework-free.
 
 ```sh
-npm install aigpu @aigpu/vue vue
+npm install aigpu @aigpu/vue
 ```
 
 ```vue

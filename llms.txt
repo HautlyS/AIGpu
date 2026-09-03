@@ -1,0 +1,100 @@
+# AIGpu — GPU TypeScript Layer for AI Agent Animations
+
+> AIGpu is a typed WebGPU/WGSL runtime that turns serializable agent state into GPU-rendered visuals. Framework-free, offline-first, agent-native.
+
+## Core Concept
+
+AIGpu provides an explicit TypeScript API over WebGPU. One `init()` call creates a typed `Gpu` context. Every surface, target, effect, draw, and frame flows from that context. No globals, no implicit state.
+
+## Quick Start
+
+```ts
+import { init, surface, effect, frameLoop } from "aigpu";
+const gpu = await init();
+const canvasSurface = surface(gpu, document.querySelector("canvas")!);
+const gradient = effect(gpu, `
+  @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
+    return vec4f(uv, 0.8, 1.0);
+  }
+`);
+frameLoop(gpu, (frame) => frame.pass(canvasSurface, gradient));
+```
+
+## Agent Animations
+
+`agentAnimation(gpu, options)` renders agent state as GPU visuals. State vocabulary: `idle`, `thinking`, `working`, `waiting`, `success`, `error`. Fields: `progress` [0,1], `activity` [0,1], `phase`, `speed`.
+
+```ts
+import { agentAnimation, clock, frameLoop, init, surface } from "aigpu";
+const gpu = await init();
+const agent = agentAnimation(gpu, { initial: { status: "thinking", progress: 0.15 } });
+agent.set({ status: "working", progress: 0.62 });
+```
+
+`mountAgentCanvas(canvas, options)` adds HTML lifecycle management with IntersectionObserver visibility gating and ResizeObserver auto-resize.
+
+## Framework Adapters
+
+- React: `useAgentCanvas()` from `@aigpu/react`
+- Vue 3: `useAgentCanvas()` from `@aigpu/vue`
+- Svelte: `agentCanvas` action from `@aigpu/svelte`
+
+All adapters call the same core API. They are optional lifecycle wrappers.
+
+## Multi-Agent State
+
+`aigpu/tools` provides `createAgentStore()`, `createAgentRegistry()`, `recordAgentEvents()`, and `replayAgentEvents()` for serializable multi-agent state management and deterministic replay.
+
+## WGSL
+
+AIGpu uses WGSL (WebGPU Shading Language). The `@aigpu/wgsl` package provides reflection, import resolution, minification, source maps, and Vite/webpack loaders. `@aigpu/wgsl-std` provides reusable hash, noise, color, and fullscreen modules.
+
+## CLI
+
+```sh
+npx aigpu docs find <query>       # search docs
+npx aigpu docs cat <symbol>       # read one doc
+npx aigpu check <file.wgsl>       # validate WGSL
+npx aigpu doctor                  # diagnose GPU environment
+npx aigpu mcp                     # start MCP stdio server
+npx aigpu examples search <query> # search examples
+```
+
+## MCP
+
+Connect coding agents to AIGpu docs and examples via Model Context Protocol:
+
+- Hosted HTTP: `https://github.com/hautlys/AIGpu/api/mcp` (read-only, no auth)
+- Local stdio: `npx -y aigpu mcp` (offline-capable, optional file downloads)
+
+Tools: `docs search`, `docs resolve`, `docs read`, `examples search`, `examples show`, `examples read`, `examples download`.
+
+## Agent Skills
+
+```sh
+npx -y skills add hautlys/AIGpu --skill aigpu-agent-toolkit --agent '*' -y
+```
+
+Teaches coding agents (Claude Code, OpenCode, Codex, Cursor, Copilot, Cline, Gemini CLI) the AIGpu API, integration patterns, and project conventions.
+
+## Packages
+
+| Package | Purpose |
+|---------|---------|
+| `aigpu` | Main API: browser, Node, mock, scene, DOM, agent-animation, tools |
+| `@aigpu/cli` | Offline docs, WGSL checks, examples, MCP stdio |
+| `@aigpu/core` | Thin WebGPU wrappers: device, buffer, texture, bind-group, uniform |
+| `@aigpu/wgsl` | WGSL reflection, resolution, minification, loaders |
+| `@aigpu/wgsl-std` | Reusable WGSL modules: hash, noise, color, fullscreen |
+| `@aigpu/adapter-node` | Headless Node adapter (Dawn) |
+| `@aigpu/adapter-mock` | Deterministic mock for tests |
+| `@aigpu/render` | Inspection, editing, utility, performance helpers |
+| `@aigpu/react` | React lifecycle hook |
+| `@aigpu/vue` | Vue 3 composable |
+| `@aigpu/svelte` | Svelte action |
+
+## Links
+
+- GitHub: https://github.com/hautlys/AIGpu
+- Docs: https://hautlys.github.io/AIGpu/
+- License: MIT

@@ -8,7 +8,9 @@ const packageDir = new URL("..", import.meta.url).pathname;
 
 test("dry-run pack includes bundled docs artifact", () => {
   const output = execFileSync("npm", ["pack", "--dry-run", "--json"], { cwd: packageDir, encoding: "utf8" });
-  const [pack] = JSON.parse(output.slice(output.indexOf("[")));
+  const jsonStart = output.indexOf("{");
+  const packObject = JSON.parse(output.slice(jsonStart));
+  const pack = Object.values(packObject)[0] as { files: { path: string }[]; size: number };
   const files = pack.files.map((file) => file.path);
 
   expect(files).toContain("bin/aigpu.js");

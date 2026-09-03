@@ -5,9 +5,9 @@ description: >-
   aigpu/mock, aigpu/scene, and aigpu/client. Use @aigpu/render/inspect, /utils, /edit,
   and /perf only as slim tooling subpaths. Bundles performance guides and the API
   reference; load one doc at a time.
-aigpuVersion: 0.3.2
-gitSha: HEAD
-generatedAt: 2026-09-02T21:30:00.000Z
+aigpuVersion: 0.3.1
+gitSha: 0f17fa13e169c1ca151f915027fb121cb8836b65
+generatedAt: 2026-09-02T22:45:00.000Z
 ---
 
 # aigpu

@@ -3,7 +3,7 @@
 Optional React 18+ adapter for AIGpu. The core package does not import React; install this package only when using React.
 
 ```sh
-npm install aigpu @aigpu/react react
+npm install aigpu @aigpu/react
 ```
 
 ```tsx

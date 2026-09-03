@@ -17,10 +17,10 @@ AIGpu has one core rendering contract and several optional lifecycle adapters. T
 npm install aigpu
 
 # React 18+
-npm install aigpu @aigpu/react react
+npm install aigpu @aigpu/react
 
 # Vue 3+
-npm install aigpu @aigpu/vue vue
+npm install aigpu @aigpu/vue
 
 # Svelte 3, 4, or 5
 npm install aigpu @aigpu/svelte

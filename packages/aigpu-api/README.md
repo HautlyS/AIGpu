@@ -1,85 +1,205 @@
 # aigpu
 
-AIGpu is an MIT-licensed TypeScript runtime for **GPU animations for AI agents**. It provides a small WebGPU API, typed WGSL modules, a deterministic mock, and an explicit bridge from orchestration state to pixels. It does not call a model, require an API key, or depend on a hosted control plane.
+> GPU-accelerated TypeScript layer for AI agent animations. Framework-free, offline-first, agent-native.
 
-## Install
-
-```sh
-pnpm add aigpu
-pnpm add -D @webgpu/types
-```
-
-## Agent animation
+AIGpu is a typed WebGPU/WGSL runtime that turns serializable agent state into GPU-rendered visuals. It provides an explicit `Gpu` context, typed uniforms, agent animation primitives, multi-agent state tools, event replay, and optional React/Vue/Svelte adapters. No hosted dashboard. No proprietary SDK. No API key.
 
 ```ts
 import { agentAnimation, clock, frameLoop, init, surface } from "aigpu";
 
 const gpu = await init();
-const output = surface(gpu, document.querySelector("canvas")!);
-const animation = agentAnimation(gpu, {
-  label: "researcher",
-  initial: { status: "thinking", progress: 0.1 },
-});
+const output = surface(gpu, document.querySelector("canvas")!, { dpr: [1, 2] });
+const agent = agentAnimation(gpu, { initial: { status: "thinking", progress: 0.15 } });
 const time = clock(gpu);
 
 frameLoop(gpu, (frame) => {
-  animation.tick(time.time);
-  frame.pass(output, animation.effect);
+  agent.tick(time.time);
+  frame.pass(output, agent.effect);
 });
 
-// Connect this to your own local model, queue, WebSocket, or event bus.
-animation.set({ status: "working", progress: 0.72, activity: 0.9 });
+agent.set({ status: "working", progress: 0.62 });
 ```
 
-The built-in states are `idle`, `thinking`, `working`, `waiting`, `success`, and `error`. `progress` and `activity` are normalized to `[0, 1]`; colors are RGBA tuples. `animation.state` is a defensive snapshot, `reset()` restores the initial state, and `tick()` accepts an external clock for deterministic renders.
+## Install
 
-## Framework-agnostic mounting
+```sh
+npm install aigpu
+npm install --save-dev @webgpu/types
+```
 
-Use `mountAgentCanvas()` or `mountAgentCanvasSelector()` for plain HTML/JavaScript. Optional lifecycle adapters are published separately as `@aigpu/react`, `@aigpu/vue`, and `@aigpu/svelte`; each delegates to the same `ready`/`set`/`resize`/`destroy` controller without adding a framework dependency to this package.
+## What's inside
 
-For multi-agent state, import `createAgentStore`, `createAgentRegistry`, `recordAgentEvents`, and `replayAgentEvents` from `aigpu/tools`. These utilities are UI-, GPU-, transport-, and provider-agnostic.
+| Import path | What you get |
+| --- | --- |
+| `aigpu` | Browser API: `init`, `surface`, `effect`, `draw`, `frame`, `frameLoop`, `agentAnimation`, `mountAgentCanvas`, `clock` |
+| `aigpu/tools` | Multi-agent state: `createAgentStore`, `createAgentRegistry`, `recordAgentEvents`, `replayAgentEvents` |
+| `aigpu/node` | Headless Node rendering via Dawn WebGPU |
+| `aigpu/mock` | Deterministic mock adapter for tests and CI |
+| `aigpu/scene` | Geometry, camera, lighting, and material helpers |
+| `aigpu/dom` | `mountAgentCanvas` with IntersectionObserver visibility gating and auto-resize |
 
-## Core runtime
+## The TypeScript GPU layer
+
+Everything starts from one typed context:
 
 ```ts
-import { draw, frame, init, target } from "aigpu/node";
+import { init, surface, effect, frameLoop, clock } from "aigpu";
+
+const gpu = await init();                          // typed Gpu context
+const canvasSurface = surface(gpu, canvas);        // canvas swapchain
+const gradient = effect(gpu, `
+  struct Params { time: f32, color: vec3f }
+  @group(0) @binding(0) var<uniform> params: Params;
+  @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
+    return vec4f(params.color, 1.0) * (sin(params.time) * 0.5 + 0.5);
+  }
+`);
+const time = clock(gpu);
+
+gradient.set({ params: { time: 0, color: [1.0, 0.4, 0.2] } });
+frameLoop(gpu, (frame) => {
+  gradient.set({ params: { time: time.time } });
+  frame.pass(canvasSurface, gradient);
+});
+```
+
+Bindings are set by their WGSL names. `set()` writes immediately; the render loop only updates what changes. No global uniforms, no implicit state, no `any`.
+
+## Agent animations
+
+`agentAnimation()` renders agent state as GPU visuals. The built-in vocabulary is `idle`, `thinking`, `working`, `waiting`, `success`, `error`. Fields: `progress` `[0,1]`, `activity` `[0,1]`, `phase`, `speed`, RGB/RGBA color tuples.
+
+```ts
+const agent = agentAnimation(gpu, {
+  label: "planner-agent",
+  initial: { status: "thinking", progress: 0.15, activity: 0.65 },
+});
+
+// Connect to your event source — WebSocket, queue, model, or human input
+agent.set({ status: "working", progress: 0.62, activity: 0.9 });
+agent.tick(time.time);
+```
+
+`mountAgentCanvas()` adds HTML lifecycle management with IntersectionObserver visibility gating and ResizeObserver auto-resize:
+
+```ts
+import { mountAgentCanvas } from "aigpu";
+
+const controller = mountAgentCanvas(canvas, {
+  initial: { status: "waiting", progress: 0.4 },
+  visibility: { rootMargin: "200px" },
+  autoResize: true,
+});
+
+controller.set({ status: "working", progress: 0.75 });
+await controller.ready;
+controller.destroy(); // cleanup when canvas leaves the page
+```
+
+## Framework adapters
+
+React, Vue, and Svelte adapters are optional peer packages. They call the same core API — just lifecycle wrappers.
+
+```sh
+npm install aigpu @aigpu/react    # React
+npm install aigpu @aigpu/vue      # Vue 3
+npm install aigpu @aigpu/svelte   # Svelte
+```
+
+## Multi-agent state and replay
+
+```ts
+import { createAgentRegistry, recordAgentEvents, replayAgentEvents } from "aigpu/tools";
+
+const registry = createAgentRegistry();
+const planner = registry.ensure("planner", { status: "thinking" });
+const researcher = registry.ensure("researcher", { status: "waiting" });
+
+// Record a session (non-sensitive visual events only)
+const recorder = recordAgentEvents((listener) =>
+  registry.subscribe((_snap, event) => listener(event))
+);
+recorder.stop();
+const session = recorder.toJSON(true);
+
+// Replay into any renderer
+replayAgentEvents(JSON.parse(session), (event) => {
+  registry.ensure(event.agentId).dispatch(event);
+});
+```
+
+## Headless Node
+
+```ts
+import { init, effect, target, frame } from "aigpu/node";
 
 const gpu = await init();
 const output = target(gpu, { size: [256, 256], format: "rgba8unorm" });
-const triangle = draw(gpu, { shader: triangleShader });
-frame(gpu, (current) => current.pass(output, triangle));
-const pixels = await output.read();
+effect(gpu, `@fragment fn main() -> @location(0) vec4f { return vec4f(0.25, 0.5, 0.75, 1.0); }`).draw(output);
+const pixels = await output.read(); // RGBA bytes
 gpu.dispose();
 ```
 
-The same API runs in the browser, headless Node through open Dawn bindings, and `aigpu/mock` for deterministic tests.
+## Deterministic mock
 
-## WGSL and tooling
+```ts
+import { createMockAdapter } from "aigpu/mock";
 
-WGSL modules are plain text modules with typed imports and exports. Use `@aigpu/wgsl/loader-vite` or `@aigpu/wgsl/loader-webpack` with an open-source bundler, or use `@aigpu/wgsl/runtime` directly from Node. The bundled `@aigpu/cli` provides offline docs, shader checks, local example search/copy, diagnostics, and MCP stdio.
-
-```sh
-npx aigpu docs cat agentAnimation
-npx aigpu examples search "webgpu"
-npx aigpu examples pull agent-cockpit --out ./agent-cockpit
-npx aigpu check ./agent.wgsl --require-validation
-npx aigpu mcp
+const adapter = createMockAdapter();
+const gpu = await init({ adapter });
+// Deterministic tests, no physical GPU required
 ```
 
-For the full reference, run `npx aigpu docs find <query>`. The catalog is read from the checkout's `examples/` directory or `AIGPU_EXAMPLES_DIR`; no network request is made.
-
-## Development
+## CLI and MCP
 
 ```sh
-pnpm install
-pnpm build
-pnpm typecheck
-pnpm test:fast
-pnpm check:skill-drift
+npx aigpu docs find agent           # search doc symbols
+npx aigpu docs cat agentAnimation   # read one doc
+npx aigpu check ./shader.wgsl       # validate WGSL
+npx aigpu doctor                    # diagnose GPU environment
+npx aigpu mcp                       # start MCP stdio server
+npx aigpu examples search "visual"  # search examples
 ```
 
-See the repository [CONTRIBUTING.md](https://github.com/hautlys/AIGpu/blob/main/CONTRIBUTING.md) for the local workflow.
+Connect coding agents to AIGpu docs via MCP (Model Context Protocol):
+
+```json
+{
+  "mcpServers": {
+    "aigpu": {
+      "command": "npx",
+      "args": ["-y", "aigpu", "mcp"]
+    }
+  }
+}
+```
+
+## Agent skills
+
+Teach coding agents (Claude Code, OpenCode, Codex, Cursor, Copilot, Cline, Gemini CLI) the AIGpu API:
+
+```sh
+npx -y skills add hautlys/AIGpu --skill aigpu-agent-toolkit --agent '*' -y
+```
+
+## WGSL modules
+
+`@aigpu/wgsl` provides reflection, source maps, import resolution, minification, and Vite/webpack loaders. `@aigpu/wgsl-std` provides reusable hash, noise, color, and fullscreen modules.
+
+```ts
+import shader from "./agent-orbit.wgsl";
+import { effect, init } from "aigpu";
+
+const gpu = await init();
+const visual = effect(gpu, shader);
+```
+
+## Links
+
+- GitHub: https://github.com/hautlys/AIGpu
+- Docs: https://hautlys.github.io/AIGpu/
+- Issues: https://github.com/hautlys/AIGpu/issues
 
 ## License
 
-AIGpu is distributed under the MIT license. See [`LICENSE`](./LICENSE) for details.
+MIT. See [`LICENSE`](./LICENSE).

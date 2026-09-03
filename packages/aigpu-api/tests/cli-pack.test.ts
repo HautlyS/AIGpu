@@ -30,7 +30,9 @@ test("the aigpu tarball includes the full internal CLI", () => {
     cwd: packageDir,
     encoding: "utf8",
   });
-  const [pack] = JSON.parse(output.slice(output.indexOf("[")));
+  const jsonStart = output.indexOf("{");
+  const packObject = JSON.parse(output.slice(jsonStart));
+  const pack = Object.values(packObject)[0] as { files: { path: string }[] };
   const files = pack.files.map((file: { path: string }) => file.path);
 
   expect(files).toContain("bin/aigpu.js");
