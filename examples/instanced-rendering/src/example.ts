@@ -1,4 +1,4 @@
-import { init, effect, frame, target, geometry } from "aigpu/node";
+import { init, draw, frame, target, geometry } from "aigpu/node";
 
 export const INSTANCED = /* wgsl */ `
 struct Uniforms { time: f32 }
@@ -39,14 +39,16 @@ export async function runInstancedExample() {
   }
   
   const cubeGeo = geometry(gpu, {
-    vertices: new Float32Array([-1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, 1,1,1, -1,1,1]),
-    attributes: { offset: offsets, color: colors },
-    stepMode: "instance",
+    buffers: [
+      { data: new Float32Array([-1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, 1,1,1, -1,1,1]), attributes: { pos: "float32x3" } },
+      { data: offsets, attributes: { offset: "float32x3" }, stepMode: "instance" },
+      { data: colors, attributes: { color: "float32x3" }, stepMode: "instance" },
+    ],
     instanceCount: count,
   });
   
-  const instanced = effect(gpu, INSTANCED, { label: "instanced", set: { time: 0 } });
+  const instanced = draw(gpu, { shader: INSTANCED, geometry: cubeGeo, label: "instanced", targets: [colorTarget], set: { time: 0 } });
   instanced.set({ time: 1.0 });
-  frame(gpu, (currentFrame) => currentFrame.pass({ target: colorTarget }, (p) => p.draw(instanced, cubeGeo)));
+  frame(gpu, (currentFrame) => currentFrame.pass({ target: colorTarget }, (p) => p.draw(instanced)));
   return { gpu, target: colorTarget };
 }

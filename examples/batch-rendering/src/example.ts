@@ -1,10 +1,10 @@
-import { init, effect, frame, target, geometry } from "aigpu/node";
+import { init, draw, frame, target, geometry } from "aigpu/node";
 
 export const BATCH = /* wgsl */ `
 struct Uniforms { time: f32 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
-@vertex fn vs(@location(0) pos: vec3f) -> @builtin(position) out {
+@vertex fn vs(@location(0) pos: vec3f) -> @builtin(position) vec4f {
   let animated = pos * (0.5 + 0.1 * sin(u.time));
   return vec4f(animated, 1);
 }
@@ -30,9 +30,11 @@ export async function runBatchExample() {
     0, 0.4, 0,  -0.35, 0.2, 0,  -0.35, -0.2, 0,  0, -0.4, 0,  0.35, -0.2, 0,  0.35, 0.2, 0,
   ]);
   
-  const batchGeo = geometry(gpu, { vertices });
-  const batch = effect(gpu, BATCH, { label: "batch", set: { time: 0 } });
+  const batchGeo = geometry(gpu, {
+    buffers: [{ data: vertices, attributes: { pos: "float32x3" } }],
+  });
+  const batch = draw(gpu, { shader: BATCH, geometry: batchGeo, label: "batch", targets: [colorTarget], set: { time: 0 } });
   batch.set({ time: 1.0 });
-  frame(gpu, (currentFrame) => currentFrame.pass({ target: colorTarget }, (p) => p.draw(batch, batchGeo)));
+  frame(gpu, (currentFrame) => currentFrame.pass({ target: colorTarget }, (p) => p.draw(batch)));
   return { gpu, target: colorTarget };
 }

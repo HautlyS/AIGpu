@@ -101,7 +101,25 @@ function renameFunctionLocals(analysis: ScopeAnalysis, fileScopeNames: ReadonlyS
       ownTokens.set(decl.id, own);
     }
 
-    const renameable = declarations.filter((decl) => allLocalOccurrencesAccountedFor(analysis.tokens, fn, decl.name, ownTokens.get(decl.id)!));
+    // Shadowing-aware grouping: same-named locals in nested scopes share a spelling, so the
+    // rename decision is per name, not per declaration. A name group is renameable when every
+    // same-spelled token in the function belongs to one of the group's declarations (its own
+    // declaration token or an attributed reference). A scope-analysis bug that loses a reference
+    // still vetoes the whole group, so it costs bytes instead of producing dangling or
+    // misattributed identifiers — exactly like the single-declaration case.
+    const byName = new Map<string, typeof declarations>();
+    for (const decl of declarations) {
+      const group = byName.get(decl.name);
+      if (group) group.push(decl);
+      else byName.set(decl.name, [decl]);
+    }
+    const renameable: typeof declarations = [];
+    for (const [name, group] of byName) {
+      const owned = new Set<number>();
+      for (const decl of group) for (const token of ownTokens.get(decl.id)!) owned.add(token);
+      if (allLocalOccurrencesAccountedFor(analysis.tokens, fn, name, owned)) renameable.push(...group);
+    }
+    renameable.sort((a, b) => a.tokenIndex - b.tokenIndex);
 
     const replaceable = new Set<number>();
     for (const decl of renameable) for (const token of ownTokens.get(decl.id)!) replaceable.add(token);
@@ -117,12 +135,14 @@ function renameFunctionLocals(analysis: ScopeAnalysis, fileScopeNames: ReadonlyS
   }
 }
 
-// Independent check that the scope analysis fully explains a local declaration before we shorten
-// it: every identifier token inside the declaration's own function that is spelled like the
-// declaration must be one of the occurrences the walker attributed to it. If anything else shares
-// the spelling — a reference the walker lost (aigpu#251), a same-named declaration in a sibling or
-// nested scope — the declaration is left alone, so a scope-analysis bug costs bytes instead of
-// producing dangling or misattributed identifiers.
+// Independent check that the scope analysis fully explains a local name before we shorten
+// it: every identifier token inside the function that is spelled like the name must be one of
+// the occurrences the walker attributed to the name's declarations. If anything else shares
+// the spelling — a reference the walker lost (aigpu#251) — the whole name group is left alone,
+// so a scope-analysis bug costs bytes instead of producing dangling or misattributed
+// identifiers. Same-named declarations in sibling or nested scopes (shadowing) are renamed
+// together, one short name per declaration, since the walker attributes each reference to its
+// innermost declaration.
 function allLocalOccurrencesAccountedFor(tokens: readonly Token[], fn: FunctionScopeInfo, name: string, own: ReadonlySet<number>): boolean {
   for (let i = fn.nameTokenIndex; i <= fn.bodyEndToken; i++) {
     const token = tokens[i];

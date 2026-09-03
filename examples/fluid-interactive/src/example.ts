@@ -1,4 +1,4 @@
-import { init, effect, compute, storage, pingPongStorage, frame } from "aigpu/node";
+import { init, effect, compute, pingPong, target, frame } from "aigpu/node";
 
 export const ADVECT = /* wgsl */ `
 @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -18,7 +18,7 @@ export const ADVECT = /* wgsl */ `
 
 export const DIVERGENCE = /* wgsl */ `
 @group(0) @binding(0) var vel: texture_2d<f32>;
-@group(0) @binding(1) var output: texture_storage_2d<rgba16float>;
+@group(0) @binding(1) var output: texture_storage_2d<rgba16float, write>;
 
 @compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
   let dims = textureDimensions(vel);
@@ -35,8 +35,8 @@ export const DIVERGENCE = /* wgsl */ `
 export async function runFluidExample() {
   const gpu = await init();
   const N = 128;
-  const velocity = pingPongStorage(gpu, [N, N], { format: "rgba16float" });
-  const pressure = pingPongStorage(gpu, [N, N], { format: "rgba16float" });
+  const velocity = pingPong(gpu, N, N, { format: "rgba16float" });
+  const pressure = pingPong(gpu, N, N, { format: "rgba16float" });
   const display = effect(gpu, `
     @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
       return vec4f(uv, sin(uv.x * 10.0) * 0.5 + 0.5, 1);
