@@ -81,7 +81,7 @@ onUnmounted(() => cleanup());
       </div>
     </div>
     <div class="hero-orb" aria-label="Animated AIGpu status visual">
-      <canvas ref="canvasRef" data-visual="hero" width="720" height="520"></canvas>
+      <canvas ref="canvasRef" class="hero-canvas" data-visual="hero" width="720" height="520"></canvas>
       <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
       <div class="orb-label">
         <span class="orb-label-dot"></span>

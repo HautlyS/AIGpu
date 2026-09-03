@@ -70,7 +70,7 @@ onMounted(() => {
         <span class="toolbar-title">agent-ops / @aigpu/vue</span>
         <span class="toolbar-status"><i></i> useAgentCanvas</span>
       </div>
-      <canvas ref="canvas" width="900" height="360" aria-label="Vue adapter agent animation"></canvas>
+      <canvas ref="canvas" class="vue-adapter-canvas" width="900" height="360" aria-label="Vue adapter agent animation"></canvas>
       <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
       <div class="stage-footer">
         <span id="vue-adapter-status">{{ status }}</span>

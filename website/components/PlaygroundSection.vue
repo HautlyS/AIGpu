@@ -86,7 +86,7 @@ onUnmounted(() => cleanup());
           <span class="toolbar-title">agent-ops / live</span>
           <span class="toolbar-status"><i></i> local simulation</span>
         </div>
-        <canvas ref="canvasRef" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
+        <canvas ref="canvasRef" class="playground-canvas" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
         <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
         <div class="stage-footer">
           <span id="stage-status">{{ status }}</span>
