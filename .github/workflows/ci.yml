@@ -59,7 +59,7 @@ jobs:
     name: Full test suite
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -71,8 +71,18 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Run all Vitest tests
-        run: pnpm exec vitest run
+      # Example tests need a real WebGPU adapter (Dawn finds none on the plain
+      # runner: AIGPU-NODE-NO-ADAPTER), so run the suite through the same
+      # Dawn/Lavapipe software-GPU image as the docker-gpu job.
+      - name: Build software GPU test image
+        run: docker build -t aigpu-test-dev:ci -f infra/test-docker/Dockerfile.dev .
+      - name: Run all Vitest tests through Dawn/Lavapipe
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            -e AIGPU_DOCKER_TEST=1 -e AIGPU_VALIDATE=require aigpu-test-dev:ci \
+            sh -lc 'Xvfb :99 -screen 0 1024x768x24 >/tmp/xvfb.log 2>&1 & xp=$!; \
+              DISPLAY=:99 pnpm exec vitest run; \
+              s=$?; kill "$xp"; exit "$s"'
 
   wgsl-loaders:
     name: WGSL loaders and runtime
