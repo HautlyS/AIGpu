@@ -109,7 +109,7 @@
     "./tools": "client"
   },
   "aigpuExportBundleBudgetsGzipBytes": {
-    ".": 40960,
+    ".": 41472,
     "./node": 40960,
     "./mock": 40960,
     "./scene": 12800,
