@@ -6,8 +6,8 @@ description: >-
   and /perf only as slim tooling subpaths. Bundles performance guides and the API
   reference; load one doc at a time.
 aigpuVersion: 0.3.1
-gitSha: 0f17fa13e169c1ca151f915027fb121cb8836b65
-generatedAt: 2026-09-03T01:44:16.194Z
+gitSha: 06dc40ead673f6536d63d4c35fda0e55c3566160
+generatedAt: 2026-09-03T09:50:44.030Z
 ---
 
 # aigpu

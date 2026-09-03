@@ -34,13 +34,39 @@ fn noise(p: vec2f) -> f32 {
 
 @fragment fn main(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let uv = pos.xy / u.resolution;
-  let grid = fract(uv * vec2f(20.0, 12.0));
-  let line = smoothstep(0.02, 0.0, min(grid.x, grid.y));
-  let wave = sin(uv.x * 6.0 + u.time * (1.0 + u.progress) + u.status * 1.2) * 0.05;
-  let ring = smoothstep(0.008, 0.0, abs(uv.y - 0.5 - wave));
-  let activityGlow = u.activity * 0.01;
-  let col = vec3f(line * 0.4 + ring * 0.6 + activityGlow * noise(uv * 10.0 + u.time));
-  return vec4f(col, 1);
+  let grid = fract(uv * vec2f(24.0, 15.0));
+  let line = smoothstep(0.015, 0.0, min(grid.x, grid.y));
+
+  let wave1 = sin(uv.x * 6.0 + u.time * (1.0 + u.progress) + u.status * 1.2) * 0.04;
+  let wave2 = sin(uv.x * 10.0 - u.time * 0.8 + u.activity * 3.0) * 0.02;
+  let wave3 = cos(uv.x * 3.0 + u.time * 0.5) * 0.015;
+  let totalWave = wave1 + wave2 + wave3;
+
+  let ring = smoothstep(0.006, 0.0, abs(uv.y - 0.5 - totalWave));
+  let ring2 = smoothstep(0.004, 0.0, abs(uv.y - 0.5 - totalWave - 0.03)) * 0.4;
+  let ring3 = smoothstep(0.004, 0.0, abs(uv.y - 0.5 - totalWave + 0.03)) * 0.4;
+
+  let activityGlow = u.activity * 0.015;
+  let activityPulse = u.activity * (0.5 + 0.5 * sin(u.time * 4.0)) * 0.02;
+
+  let n = noise(uv * 12.0 + u.time * 0.3);
+  let center = smoothstep(0.08, 0.0, length(uv - vec2f(0.5))) * (0.3 + activityPulse);
+
+  let statusHue = u.status / 5.0;
+  let statusColor = vec3f(
+    smoothstep(0.3, 0.0, abs(statusHue - 0.0)) * 0.8 + smoothstep(0.3, 0.0, abs(statusHue - 0.2)) * 0.2,
+    smoothstep(0.3, 0.0, abs(statusHue - 0.4)) * 0.6 + smoothstep(0.3, 0.0, abs(statusHue - 0.8)) * 0.3,
+    smoothstep(0.3, 0.0, abs(statusHue - 0.6)) * 0.9 + smoothstep(0.3, 0.0, abs(statusHue - 1.0)) * 0.2
+  );
+
+  var col = vec3f(line * 0.25 + (ring + ring2 + ring3) * 0.35);
+  col += statusColor * (activityGlow + n * 0.08);
+  col += vec3f(0.4, 0.6, 1.0) * center;
+
+  let scan = smoothstep(0.0, 0.012, abs(fract(uv.y * 20.0 + u.time * 0.15) - 0.5)) * 0.04;
+  col += vec3f(scan);
+
+  return vec4f(max(col, vec3f(0.0)), 1);
 }`;
 
 onMounted(async () => {

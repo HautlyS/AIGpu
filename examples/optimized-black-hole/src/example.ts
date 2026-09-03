@@ -26,7 +26,7 @@ struct Uniforms { time: f32, resolution: vec2f }
   // Event horizon
   let horizon = smoothstep(0.05, 0.0, r - 0.1);
 
-  let col = vec3f(disk * doppler * 2.0, disk * doppler * 0.8, disk * 0.3);
+  var col = vec3f(disk * doppler * 2.0, disk * doppler * 0.8, disk * 0.3);
   col += vec3f(stars * 0.5);
   col += vec3f(horizon * 0.2);
 
