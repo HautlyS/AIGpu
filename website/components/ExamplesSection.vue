@@ -44,7 +44,7 @@ const SHADERS: Record<string, string> = {
   vg_cosmic: `struct AgentParams { time: f32, progress: f32, activity: f32, status: f32, phase: f32, speed: f32, pad: vec2f, accent: vec4f, secondary: vec4f, background: vec4f } @group(0) @binding(0) var<uniform> params: AgentParams; const TAU: f32 = 6.28318530718; const STYLE: u32 = 7u; fn hash2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); } @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f { let t = params.time * params.speed + params.phase; let p = uv - 0.5; let d = length(p); let a = atan2(p.y, p.x); let pulse = 0.5 + 0.5 * sin(t * 2.0); let energy = max(params.activity, 0.04); var color = params.background.rgb; let stars = step(0.985, hash2(floor(uv * 42.0) + params.phase)) * (0.4 + pulse * 0.6); let node = 1.0 - smoothstep(0.025, 0.0, length(p - vec2f(cos(t * 0.7), sin(t * 0.7)) * 0.25)); let nebula = exp(-d * 4.0) * (0.4 + 0.3 * sin(a * 3.0 + t)); color += params.secondary.rgb * (stars + nebula) + params.accent.rgb * node; let grain = (hash2(uv * 900.0 + t) - 0.5) * 0.012; return vec4f(max(color + vec3f(grain), vec3f(0.0)), 1.0); }`,
 };
 
-const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
+const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle | null }>();
 const gpuError = ref<string | null>(null);
 let observer: IntersectionObserver | null = null;
 
@@ -74,7 +74,7 @@ onMounted(async () => {
     observer?.disconnect();
     observer = null;
     canvasMap.forEach(({ loop }) => {
-      try { loop.stop(); } catch { /* ignore */ }
+      try { loop?.stop(); } catch { /* ignore */ }
     });
     canvasMap.clear();
     // Shared gpu outlives every section — never disposed here.
@@ -105,26 +105,33 @@ async function mountCanvas(canvas: HTMLCanvasElement) {
 
   const output = surface(gpu, canvas, { dpr: [1, 1.5] });
   const isGalleryShader = id.startsWith("vg_");
-  const initial = isGalleryShader
+  const HAS_TIME_RES = new Set(["s14_raymarching", "s15_noise_fields", "cockpit", "gpu_black_hole", "gpu_earth", "gpu_raymarch_fractal"]);
+  const HAS_TIME_RES_STATUS = new Set(["hautly_orb"]);
+  const initial: Record<string, any> = isGalleryShader
     ? { time: 0, progress: 0.5, activity: 0.5, status: 2, phase: 0, speed: 1.0, pad: [0, 0], accent: [0.35, 0.95, 1, 1], secondary: [0.06, 0.38, 0.65, 1], background: [0.005, 0.028, 0.06, 1] }
-    : { time: 0, resolution: [canvas.width, canvas.height], status: 0, intensity: 0.5 };
+    : HAS_TIME_RES_STATUS.has(id)
+      ? { time: 0, resolution: [canvas.width, canvas.height], status: 0, intensity: 0.5 }
+      : HAS_TIME_RES.has(id)
+        ? { time: 0, resolution: [canvas.width, canvas.height] }
+        : {};
   const vis = effect(gpu, shader, { label: id, set: initial });
+  const needsFrame = isGalleryShader || HAS_TIME_RES.has(id) || HAS_TIME_RES_STATUS.has(id);
   // One frameLoop per canvas (owns its rAF). No outer rAF.
-  const loop = frameLoop(gpu, (frame) => {
+  const loop = needsFrame ? frameLoop(gpu, (frame) => {
     if (isGalleryShader) {
       vis.set({ time: performance.now() / 1000 });
     } else {
       vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
     }
     frame.pass(output, vis);
-  });
+  }) : null;
   canvasMap.set(canvas, { output, vis, loop });
 }
 
 function unmountCanvas(canvas: HTMLCanvasElement) {
   const entry = canvasMap.get(canvas);
   if (entry) {
-    try { entry.loop.stop(); } catch { /* ignore */ }
+    try { entry.loop?.stop(); } catch { /* ignore */ }
     canvasMap.delete(canvas);
   }
 }
