@@ -19,7 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-const { gpuError, withGpu, setLoop, cleanup } = useGpuMount();
+const { gpuError, withGpu, setLoop, cleanup, retryWebGPU } = useGpuMount();
 
 const SHADER = /* wgsl */ `
 struct Uniforms { time: f32, resolution: vec2f, status: f32, progress: f32, activity: f32 }
@@ -87,7 +87,7 @@ onUnmounted(() => cleanup());
           <span class="toolbar-status"><i></i> local simulation</span>
         </div>
         <canvas ref="canvasRef" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
-        <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+        <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
         <div class="stage-footer">
           <span id="stage-status">{{ status }}</span>
           <span class="stage-progress"><span id="stage-progress-bar" :style="{ width: progress + '%' }"></span></span>

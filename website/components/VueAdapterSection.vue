@@ -2,7 +2,8 @@
 import { ref, watch, onMounted } from "vue";
 import { useAgentCanvas } from "@aigpu/vue";
 import type { AgentStatus } from "aigpu";
-import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
+import { describeWebGPUError, isWebGPUAvailable } from "../composables/sharedGpu";
+import { retryWebGPU } from "../composables/useWebGPU";
 
 const props = defineProps<{
   status: string;
@@ -11,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const gpuError = ref<string | null>(
-  isWebGPUAvailable() ? null : WEBGPU_UNAVAILABLE_MSG,
+  isWebGPUAvailable() ? null : describeWebGPUError(null),
 );
 
 // Official Vue adapter: owns init + surface + frame loop + visibility gating.
@@ -53,7 +54,7 @@ onMounted(() => {
     .then(() => pushPatch())
     .catch((e) => {
       console.error("[aigpu] Vue adapter init failed:", e);
-      gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+      gpuError.value = describeWebGPUError(e);
     });
 });
 </script>
@@ -70,7 +71,7 @@ onMounted(() => {
         <span class="toolbar-status"><i></i> useAgentCanvas</span>
       </div>
       <canvas ref="canvas" width="900" height="360" aria-label="Vue adapter agent animation"></canvas>
-      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
       <div class="stage-footer">
         <span id="vue-adapter-status">{{ status }}</span>
         <span class="stage-progress"><span :style="{ width: progress + '%' }"></span></span>

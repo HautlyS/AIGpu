@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
-import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
+import { effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { describeWebGPUError, getSharedGpu } from "../composables/sharedGpu";
+import { retryWebGPU } from "../composables/useWebGPU";
 
 const gpuError = ref<string | null>(null);
 
@@ -40,25 +41,14 @@ const MOOD_COLORS: Record<string, [number, number, number]> = {
 };
 
 const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
-let gpu: any = null;
 let observer: IntersectionObserver | null = null;
 
 onMounted(async () => {
   const canvases = document.querySelectorAll<HTMLElement>(".hautly-gallery-canvas[data-form]");
   if (!canvases.length) return;
 
-  if (!isWebGPUAvailable()) {
-    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
-    return;
-  }
-  try {
-    gpu = await init();
-  } catch (e) {
-    console.error("[aigpu] HautlyGallery init failed:", e);
-    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
-    return;
-  }
-
+  // Eager observation only — the shared GPU is requested lazily on the first
+  // canvas that actually enters the viewport (see mountCanvas).
   observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
@@ -79,13 +69,21 @@ onMounted(async () => {
       try { loop.stop(); } catch { /* ignore */ }
     });
     canvasMap.clear();
-    try { gpu?.dispose(); } catch { /* ignore */ }
-    gpu = null;
+    // Shared gpu outlives every section — never disposed here.
   });
 });
 
 async function mountCanvas(canvas: HTMLCanvasElement) {
-  if (canvasMap.has(canvas) || !gpu) return;
+  if (canvasMap.has(canvas)) return;
+  let gpu: any;
+  try {
+    gpu = await getSharedGpu();
+  } catch (e) {
+    console.error("[aigpu] HautlyGallery init failed:", e);
+    gpuError.value = describeWebGPUError(e);
+    return;
+  }
+  if (!canvas.isConnected || canvasMap.has(canvas)) return;
   const form = canvas.getAttribute("data-form") || "orb";
   const mood = canvas.getAttribute("data-mood") || "idle";
   const shader = FORM_SHADERS[form] || FORM_SHADERS.orb;
@@ -123,7 +121,7 @@ function hautlyGallerySelect(item: { form: string; mood: string }) {
     <div class="section-heading">
       <div><p class="eyebrow">entity gallery</p><h2>Every form. Every mood. Animated.</h2></div>
       <p class="section-note">Click any entity to preview it live. Each form has unique breathing, particles, and expression patterns.</p>
-      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
     </div>
     <div class="hautly-gallery-grid">
       <div v-for="item in hautlyGallery" :key="item.form + '-' + item.mood"

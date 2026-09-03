@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from "vue";
-import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
-import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
+import { effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { describeWebGPUError, getSharedGpu } from "../composables/sharedGpu";
+import { retryWebGPU } from "../composables/useWebGPU";
 
 const props = defineProps<{
   examples: any[];
@@ -45,7 +46,6 @@ const SHADERS: Record<string, string> = {
 
 const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
 const gpuError = ref<string | null>(null);
-let gpu: any = null;
 let observer: IntersectionObserver | null = null;
 
 function observeCanvases() {
@@ -55,18 +55,8 @@ function observeCanvases() {
 }
 
 onMounted(async () => {
-  if (!isWebGPUAvailable()) {
-    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
-    return;
-  }
-  try {
-    gpu = await init();
-  } catch (e) {
-    console.error("[aigpu] ExamplesSection init failed:", e);
-    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
-    return;
-  }
-
+  // Eager observation only — the shared GPU is requested lazily on the first
+  // canvas that actually enters the viewport (see mountCanvas).
   observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
@@ -87,9 +77,7 @@ onMounted(async () => {
       try { loop.stop(); } catch { /* ignore */ }
     });
     canvasMap.clear();
-    // Single shared gpu — dispose exactly once.
-    try { gpu?.dispose(); } catch { /* ignore */ }
-    gpu = null;
+    // Shared gpu outlives every section — never disposed here.
   });
 });
 
@@ -101,7 +89,16 @@ watch(() => props.filteredExamples, async () => {
 });
 
 async function mountCanvas(canvas: HTMLCanvasElement) {
-  if (canvasMap.has(canvas) || !gpu) return;
+  if (canvasMap.has(canvas)) return;
+  let gpu: any;
+  try {
+    gpu = await getSharedGpu();
+  } catch (e) {
+    console.error("[aigpu] ExamplesSection init failed:", e);
+    gpuError.value = describeWebGPUError(e);
+    return;
+  }
+  if (!canvas.isConnected || canvasMap.has(canvas)) return;
   const id = canvas.getAttribute("data-visual") || "";
   const shader = SHADERS[id];
   if (!shader) return;
@@ -149,7 +146,7 @@ function unmountCanvas(canvas: HTMLCanvasElement) {
     <div class="search-row">
       <input type="search" class="search-input" placeholder="> grep examples..." :value="search" @input="emit('update:search', ($event.target as HTMLInputElement).value)" aria-label="Search examples">
     </div>
-    <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+    <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
     <div class="example-grid">
       <article v-for="ex in filteredExamples" :key="ex.id" class="example-card" :data-tags="ex.tags" @click="emit('open-example', ex)">
         <canvas class="example-canvas" :data-visual="ex.id" width="400" height="220"></canvas>

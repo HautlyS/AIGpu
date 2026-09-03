@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
-import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
-import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
+import { ref, onUnmounted, watch } from "vue";
+import { effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { describeWebGPUError, getSharedGpu } from "../composables/sharedGpu";
+import { retryWebGPU } from "../composables/useWebGPU";
 
 const props = defineProps<{
   open: boolean;
@@ -17,8 +18,7 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const gpuError = ref<string | null>(null);
-// One shared gpu across opens — init lazily, dispose once on unmount.
-let gpu: any = null;
+// Shared page GPU — created lazily on first modal open, never disposed here.
 let loop: FrameLoopHandle | null = null;
 
 const SHADERS: Record<string, string> = {
@@ -68,15 +68,12 @@ async function mountModalCanvas() {
   if (!shader) return;
 
   gpuError.value = null;
-  if (!isWebGPUAvailable()) {
-    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
-    return;
-  }
+  let gpu: any;
   try {
-    if (!gpu) gpu = await init();
+    gpu = await getSharedGpu();
   } catch (e) {
     console.error("[aigpu] Modal init failed:", e);
-    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    gpuError.value = describeWebGPUError(e);
     return;
   }
 
@@ -116,8 +113,7 @@ watch(() => props.open, (isOpen) => {
 
 onUnmounted(() => {
   stopLoop();
-  try { gpu?.dispose(); } catch { /* ignore */ }
-  gpu = null;
+  // Shared gpu outlives the modal — never disposed here.
 });
 </script>
 
@@ -133,7 +129,7 @@ onUnmounted(() => {
       </div>
       <div class="modal-body">
         <div class="modal-preview">
-          <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+          <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
           <canvas v-if="type === 'example'" ref="canvasRef" class="modal-canvas" :data-visual="example?.id" width="800" height="400"></canvas>
           <div v-else class="modal-integration-preview">
             <canvas ref="canvasRef" class="integration-canvas-large" :data-visual="'fw_' + framework?.id" width="800" height="300"></canvas>

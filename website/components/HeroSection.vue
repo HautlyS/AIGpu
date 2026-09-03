@@ -6,7 +6,7 @@ import { useGpuMount } from "../composables/useWebGPU";
 const props = defineProps<{ status: string; progress: number }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-const { gpuError, withGpu, setLoop, cleanup } = useGpuMount();
+const { gpuError, withGpu, setLoop, cleanup, retryWebGPU } = useGpuMount();
 
 const SHADER = /* wgsl */ `
 struct Uniforms { time: f32, resolution: vec2f }
@@ -82,7 +82,7 @@ onUnmounted(() => cleanup());
     </div>
     <div class="hero-orb" aria-label="Animated AIGpu status visual">
       <canvas ref="canvasRef" data-visual="hero" width="720" height="520"></canvas>
-      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }} <button class="button button-quiet" @click="retryWebGPU">Retry</button></p>
       <div class="orb-label">
         <span class="orb-label-dot"></span>
         <span id="hero-state">{{ status }}</span>
