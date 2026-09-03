@@ -46,6 +46,46 @@ test("browser init fails clearly when the adapter lacks a requested feature", as
   expect(requestDevice).not.toHaveBeenCalled();
 });
 
+test("browser init retries with the fallback adapter when hardware is missing", async () => {
+  const gpuDevice = createMockGPUDevice();
+  const requestDevice = vi.fn(async () => gpuDevice);
+  const fallback = { requestDevice, features: new Set<string>(), info: null } as unknown as GPUAdapter;
+  const requestAdapter = vi.fn(async (opts?: GPURequestAdapterOptions) =>
+    opts?.forceFallbackAdapter === true ? fallback : null,
+  );
+  vi.stubGlobal("navigator", { gpu: { requestAdapter } });
+
+  const gpu = await initBrowser();
+  expect(requestAdapter).toHaveBeenCalledTimes(2);
+  expect(requestAdapter.mock.calls[0]?.[0]).toEqual({ powerPreference: undefined });
+  expect(requestAdapter.mock.calls[1]?.[0]).toEqual({ powerPreference: undefined, forceFallbackAdapter: true });
+  expect(gpu.gpu).toBe(gpuDevice);
+  gpu.dispose();
+});
+
+test("browser init with forceFallbackAdapter: false never retries", async () => {
+  const requestAdapter = vi.fn(async () => null);
+  vi.stubGlobal("navigator", { gpu: { requestAdapter } });
+
+  await expect(initBrowser({ forceFallbackAdapter: false })).rejects.toMatchObject({
+    code: "AIGPU-RING1-UNSUPPORTED",
+  });
+  expect(requestAdapter).toHaveBeenCalledTimes(1);
+  expect(requestAdapter.mock.calls[0]?.[0]).toEqual({ powerPreference: undefined });
+});
+
+test("browser init with forceFallbackAdapter: true requests fallback up front", async () => {
+  const gpuDevice = createMockGPUDevice();
+  const requestDevice = vi.fn(async () => gpuDevice);
+  const requestAdapter = vi.fn(async () => ({ requestDevice, features: new Set<string>(), info: null } as unknown as GPUAdapter));
+  vi.stubGlobal("navigator", { gpu: { requestAdapter } });
+
+  const gpu = await initBrowser({ forceFallbackAdapter: true });
+  expect(requestAdapter).toHaveBeenCalledTimes(1);
+  expect(requestAdapter.mock.calls[0]?.[0]).toEqual({ powerPreference: undefined, forceFallbackAdapter: true });
+  gpu.dispose();
+});
+
 test("mock adapter with declared features exposes requested features on device.features", async () => {
   const adapter = createMockAdapter({ features: ["depth-clip-control", "timestamp-query"] });
   const gpu = await init({ adapter, requiredFeatures: ["depth-clip-control"] });

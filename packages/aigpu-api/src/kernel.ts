@@ -28,6 +28,16 @@ export interface InitOptions {
    */
   readonly device?: never;
   readonly powerPreference?: GPUPowerPreference;
+  /**
+   * Ask for a software (SwiftShader) adapter when no hardware adapter is available.
+   *
+   * - `true`: request the fallback adapter up front (may return software rendering even when
+   *   hardware exists — that is what the flag means in WebGPU).
+   * - `false`: never retry; a null first adapter fails, for callers that require hardware.
+   * - omitted (default): request hardware first, then retry once with the fallback adapter
+   *   before failing, so `init()` keeps working on machines without a GPU.
+   */
+  readonly forceFallbackAdapter?: boolean;
   readonly requiredFeatures?: readonly GPUFeatureName[];
   readonly requiredLimits?: RequiredDeviceLimits;
   readonly label?: string;
@@ -236,7 +246,13 @@ export async function createDevice(entry: EntryKind, opts: InitOptions, adapterF
 
 async function requestBrowserDevice(opts: InitOptions): Promise<Device> {
   const nav = globalThis.navigator as Navigator & { gpu?: GPU };
-  const adapter = await nav.gpu?.requestAdapter({ powerPreference: opts.powerPreference });
+  const base = { powerPreference: opts.powerPreference };
+  let adapter = await nav.gpu?.requestAdapter(opts.forceFallbackAdapter === true ? { ...base, forceFallbackAdapter: true } : base);
+  // No hardware adapter (VMs, driver-less machines): retry once asking for software rendering
+  // instead of failing outright — unless the caller explicitly opted out with `false`.
+  if (!adapter && opts.forceFallbackAdapter !== false) {
+    adapter = await nav.gpu?.requestAdapter({ ...base, forceFallbackAdapter: true });
+  }
   if (!adapter) throw unsupportedError("init", "navigator.gpu.requestAdapter() returned null.");
   validateRequiredFeatures(adapter.features, opts.requiredFeatures);
   const gpuDevice = await adapter.requestDevice({ requiredFeatures: opts.requiredFeatures, requiredLimits: opts.requiredLimits });
