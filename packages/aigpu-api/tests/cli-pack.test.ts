@@ -14,6 +14,35 @@ const cliDir = resolve(workspaceRoot, "packages/aigpu-cli");
 
 const readJson = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 
+/**
+ * Parses `npm pack --json` stdout. Some npm versions print `npm notice`
+ * lines to stdout after the JSON payload, so the JSON is extracted by
+ * bracket-matching instead of parsing the whole output.
+ */
+function parsePackJson(output: string): unknown {
+  const start = output.search(/[{\[]/u);
+  if (start === -1) throw new Error("npm pack produced no JSON");
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < output.length; i++) {
+    const ch = output[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return JSON.parse(output.slice(start, i + 1));
+    }
+  }
+  throw new Error("npm pack produced truncated JSON");
+}
+
 test("aigpu owns the CLI bin and the internal CLI cannot be published", () => {
   const aigpu = readJson(resolve(packageDir, "package.json"));
   const cli = readJson(resolve(workspaceRoot, "packages/aigpu-cli/package.json"));
@@ -30,8 +59,7 @@ test("the aigpu tarball includes the full internal CLI", () => {
     cwd: packageDir,
     encoding: "utf8",
   });
-  const jsonStart = output.indexOf("{");
-  const packObject = JSON.parse(output.slice(jsonStart));
+  const packObject = parsePackJson(output) as Record<string, { files: { path: string }[] }>;
   const pack = Object.values(packObject)[0] as { files: { path: string }[] };
   const files = pack.files.map((file: { path: string }) => file.path);
 

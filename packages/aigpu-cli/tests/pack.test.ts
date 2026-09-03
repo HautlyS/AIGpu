@@ -6,10 +6,38 @@ import { expect, test } from "vitest";
 
 const packageDir = new URL("..", import.meta.url).pathname;
 
+/**
+ * Parses `npm pack --json` stdout. Some npm versions print `npm notice`
+ * lines to stdout after the JSON payload, so the JSON is extracted by
+ * bracket-matching instead of parsing the whole output.
+ */
+function parsePackJson(output: string): unknown {
+  const start = output.search(/[{\[]/u);
+  if (start === -1) throw new Error("npm pack produced no JSON");
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < output.length; i++) {
+    const ch = output[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return JSON.parse(output.slice(start, i + 1));
+    }
+  }
+  throw new Error("npm pack produced truncated JSON");
+}
+
 test("dry-run pack includes bundled docs artifact", () => {
   const output = execFileSync("npm", ["pack", "--dry-run", "--json"], { cwd: packageDir, encoding: "utf8" });
-  const jsonStart = output.indexOf("{");
-  const packObject = JSON.parse(output.slice(jsonStart));
+  const packObject = parsePackJson(output) as Record<string, { files: { path: string }[]; size: number }>;
   const pack = Object.values(packObject)[0] as { files: { path: string }[]; size: number };
   const files = pack.files.map((file) => file.path);
 
