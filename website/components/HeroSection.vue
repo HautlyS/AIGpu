@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { effect, frameLoop, surface } from "aigpu";
+import { useGpuMount } from "../composables/useWebGPU";
 
 const props = defineProps<{ status: string; progress: number }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-let rafId = 0;
+const { gpuError, withGpu, setLoop, cleanup } = useGpuMount();
 
 const SHADER = /* wgsl */ `
 struct Uniforms { time: f32, resolution: vec2f }
@@ -46,19 +47,20 @@ onMounted(async () => {
   const canvas = canvasRef.value;
   if (!canvas) return;
 
-  const gpu = await init();
-  const output = surface(gpu, canvas, { dpr: [1, 1.5] });
-  const vis = effect(gpu, SHADER, { label: "hero-orb", set: { time: 0, resolution: [canvas.width, canvas.height] } });
+  await withGpu(async (gpu) => {
+    const output = surface(gpu, canvas, { dpr: [1, 1.5] });
+    const vis = effect(gpu, SHADER, { label: "hero-orb", set: { time: 0, resolution: [canvas.width, canvas.height] } });
 
-  function animate() {
-    vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
+    // frameLoop owns its own rAF — never nest it inside another rAF.
+    const handle = frameLoop(gpu, (frame) => {
+      vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
+      frame.pass(output, vis);
+    });
+    setLoop(handle);
+  });
 });
 
-onUnmounted(() => cancelAnimationFrame(rafId));
+onUnmounted(() => cleanup());
 </script>
 
 <template>
@@ -80,6 +82,7 @@ onUnmounted(() => cancelAnimationFrame(rafId));
     </div>
     <div class="hero-orb" aria-label="Animated AIGpu status visual">
       <canvas ref="canvasRef" data-visual="hero" width="720" height="520"></canvas>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
       <div class="orb-label">
         <span class="orb-label-dot"></span>
         <span id="hero-state">{{ status }}</span>

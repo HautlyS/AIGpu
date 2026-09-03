@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
 
 const props = defineProps<{
   open: boolean;
@@ -15,7 +16,10 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-let rafId = 0;
+const gpuError = ref<string | null>(null);
+// One shared gpu across opens — init lazily, dispose once on unmount.
+let gpu: any = null;
+let loop: FrameLoopHandle | null = null;
 
 const SHADERS: Record<string, string> = {
   s02_fullscreen: `@fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f { let v = smoothstep(1.2, 0.2, distance(uv, vec2f(0.5))); return vec4f(uv.x, uv.y, 0.46 + 0.16 * v, 1.0); }`,
@@ -55,7 +59,7 @@ function getInitialParams(id: string): Record<string, any> {
 }
 
 async function mountModalCanvas() {
-  cancelAnimationFrame(rafId);
+  stopLoop();
   const canvas = canvasRef.value;
   if (!canvas || !props.open) return;
 
@@ -63,40 +67,58 @@ async function mountModalCanvas() {
   const shader = SHADERS[id];
   if (!shader) return;
 
-  if (id === currentShader) {
-    // Re-render existing
-  } else {
+  gpuError.value = null;
+  if (!isWebGPUAvailable()) {
+    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+  try {
+    if (!gpu) gpu = await init();
+  } catch (e) {
+    console.error("[aigpu] Modal init failed:", e);
+    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+
+  if (id !== currentShader) {
     currentShader = id;
     currentLabel = id;
   }
 
-  const gpu = await init();
   const output = surface(gpu, canvas, { dpr: [1, 1.5] });
   const vis = effect(gpu, shader, { label: currentLabel, set: getInitialParams(id) });
 
-  function animate() {
+  // Single frameLoop (owns its rAF). Stopped on close.
+  loop = frameLoop(gpu, (frame) => {
     if (!props.open) return;
     if (isGalleryShader(id)) {
       vis.set({ time: performance.now() / 1000 });
     } else {
       vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
     }
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
+    frame.pass(output, vis);
+  });
+}
+
+function stopLoop() {
+  try { loop?.stop(); } catch { /* ignore */ }
+  loop = null;
 }
 
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
     setTimeout(mountModalCanvas, 50);
   } else {
-    cancelAnimationFrame(rafId);
+    stopLoop();
     currentShader = "";
   }
 });
 
-onUnmounted(() => cancelAnimationFrame(rafId));
+onUnmounted(() => {
+  stopLoop();
+  try { gpu?.dispose(); } catch { /* ignore */ }
+  gpu = null;
+});
 </script>
 
 <template>
@@ -111,6 +133,7 @@ onUnmounted(() => cancelAnimationFrame(rafId));
       </div>
       <div class="modal-body">
         <div class="modal-preview">
+          <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
           <canvas v-if="type === 'example'" ref="canvasRef" class="modal-canvas" :data-visual="example?.id" width="800" height="400"></canvas>
           <div v-else class="modal-integration-preview">
             <canvas ref="canvasRef" class="integration-canvas-large" :data-visual="'fw_' + framework?.id" width="800" height="300"></canvas>

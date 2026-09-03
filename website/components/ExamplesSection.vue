@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { ref, onMounted, onUnmounted, watch, nextTick } from "vue";
+import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
 
 const props = defineProps<{
   examples: any[];
@@ -42,36 +43,65 @@ const SHADERS: Record<string, string> = {
   vg_cosmic: `struct AgentParams { time: f32, progress: f32, activity: f32, status: f32, phase: f32, speed: f32, pad: vec2f, accent: vec4f, secondary: vec4f, background: vec4f } @group(0) @binding(0) var<uniform> params: AgentParams; const TAU: f32 = 6.28318530718; const STYLE: u32 = 7u; fn hash2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); } @fragment fn main(@location(0) uv: vec2f) -> @location(0) vec4f { let t = params.time * params.speed + params.phase; let p = uv - 0.5; let d = length(p); let a = atan2(p.y, p.x); let pulse = 0.5 + 0.5 * sin(t * 2.0); let energy = max(params.activity, 0.04); var color = params.background.rgb; let stars = step(0.985, hash2(floor(uv * 42.0) + params.phase)) * (0.4 + pulse * 0.6); let node = 1.0 - smoothstep(0.025, 0.0, length(p - vec2f(cos(t * 0.7), sin(t * 0.7)) * 0.25)); let nebula = exp(-d * 4.0) * (0.4 + 0.3 * sin(a * 3.0 + t)); color += params.secondary.rgb * (stars + nebula) + params.accent.rgb * node; let grain = (hash2(uv * 900.0 + t) - 0.5) * 0.012; return vec4f(max(color + vec3f(grain), vec3f(0.0)), 1.0); }`,
 };
 
-const canvasMap = new Map<HTMLCanvasElement, { gpu: any; output: any; vis: any }>();
+const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
+const gpuError = ref<string | null>(null);
+let gpu: any = null;
+let observer: IntersectionObserver | null = null;
+
+function observeCanvases() {
+  if (!observer) return;
+  const canvases = document.querySelectorAll<HTMLCanvasElement>(".example-canvas[data-visual]");
+  canvases.forEach((c) => observer!.observe(c));
+}
 
 onMounted(async () => {
-  const canvases = document.querySelectorAll<HTMLElement>(".example-canvas[data-visual]");
-  if (!canvases.length) return;
+  if (!isWebGPUAvailable()) {
+    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+  try {
+    gpu = await init();
+  } catch (e) {
+    console.error("[aigpu] ExamplesSection init failed:", e);
+    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
 
-  const gpu = await init();
-
-  const observer = new IntersectionObserver((entries) => {
+  observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
       if (entry.isIntersecting) {
-        mountCanvas(canvas, gpu);
+        mountCanvas(canvas);
       } else {
         unmountCanvas(canvas);
       }
     });
   }, { rootMargin: "200px" });
 
-  canvases.forEach((c) => observer.observe(c));
+  observeCanvases();
 
   onUnmounted(() => {
-    observer.disconnect();
-    canvasMap.forEach(({ gpu }) => gpu.dispose());
+    observer?.disconnect();
+    observer = null;
+    canvasMap.forEach(({ loop }) => {
+      try { loop.stop(); } catch { /* ignore */ }
+    });
     canvasMap.clear();
+    // Single shared gpu — dispose exactly once.
+    try { gpu?.dispose(); } catch { /* ignore */ }
+    gpu = null;
   });
 });
 
-async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
-  if (canvasMap.has(canvas)) return;
+// Re-observe after filter/search re-renders the grid — new canvases are never
+// observed otherwise and stay empty.
+watch(() => props.filteredExamples, async () => {
+  await nextTick();
+  observeCanvases();
+});
+
+async function mountCanvas(canvas: HTMLCanvasElement) {
+  if (canvasMap.has(canvas) || !gpu) return;
   const id = canvas.getAttribute("data-visual") || "";
   const shader = SHADERS[id];
   if (!shader) return;
@@ -82,24 +112,24 @@ async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
     ? { time: 0, progress: 0.5, activity: 0.5, status: 2, phase: 0, speed: 1.0, pad: [0, 0], accent: [0.35, 0.95, 1, 1], secondary: [0.06, 0.38, 0.65, 1], background: [0.005, 0.028, 0.06, 1] }
     : { time: 0, resolution: [canvas.width, canvas.height], status: 0, intensity: 0.5 };
   const vis = effect(gpu, shader, { label: id, set: initial });
-  canvasMap.set(canvas, { gpu, output, vis });
-
-  let rafId = 0;
-  function animate() {
-    if (!canvasMap.has(canvas)) return;
+  // One frameLoop per canvas (owns its rAF). No outer rAF.
+  const loop = frameLoop(gpu, (frame) => {
     if (isGalleryShader) {
       vis.set({ time: performance.now() / 1000 });
     } else {
       vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
     }
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
+    frame.pass(output, vis);
+  });
+  canvasMap.set(canvas, { output, vis, loop });
 }
 
 function unmountCanvas(canvas: HTMLCanvasElement) {
-  canvasMap.delete(canvas);
+  const entry = canvasMap.get(canvas);
+  if (entry) {
+    try { entry.loop.stop(); } catch { /* ignore */ }
+    canvasMap.delete(canvas);
+  }
 }
 </script>
 
@@ -119,6 +149,7 @@ function unmountCanvas(canvas: HTMLCanvasElement) {
     <div class="search-row">
       <input type="search" class="search-input" placeholder="> grep examples..." :value="search" @input="emit('update:search', ($event.target as HTMLInputElement).value)" aria-label="Search examples">
     </div>
+    <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
     <div class="example-grid">
       <article v-for="ex in filteredExamples" :key="ex.id" class="example-card" :data-tags="ex.tags" @click="emit('open-example', ex)">
         <canvas class="example-canvas" :data-visual="ex.id" width="400" height="220"></canvas>

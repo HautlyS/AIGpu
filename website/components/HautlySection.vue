@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { useHautly } from "@hautly/entity/vue";
-import { createSpeechController, type AIResponseAdapter } from "@hautly/entity/speech";
+import { useHautly, HautlyEntity } from "@hautly/entity/vue";
 
 const hautlyMood = ref("idle");
 const hautlyForm = ref("orb");
@@ -149,14 +148,15 @@ function hautlyScrollChat() {
           <span class="toolbar-status"><i></i> alive</span>
         </div>
         <div class="hautly-canvas-wrap" @click="hautlyClick">
-          <canvas
-            ref="canvasRef"
-            :data-form="hautlyForm"
-            :data-mood="hautlyMood"
-            :data-energy="hautlyEnergy"
-            width="800" height="480"
-            aria-label="Hautly entity"
-          ></canvas>
+          <HautlyEntity
+            :form="hautlyForm"
+            :mood="hautlyMood"
+            :energy="hautlyEnergy"
+            :speaking="!!hautlySpeechText"
+            :speech-text="hautlySpeechText"
+            :width="800"
+            :height="480"
+          />
           <div class="hautly-speech-bubble" v-if="hautlySpeechText">
             <span>{{ hautlySpeechText }}</span>
           </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { effect, frameLoop, surface } from "aigpu";
+import { useGpuMount } from "../composables/useWebGPU";
 
 const props = defineProps<{
   status: string;
@@ -18,7 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-let rafId = 0;
+const { gpuError, withGpu, setLoop, cleanup } = useGpuMount();
 
 const SHADER = /* wgsl */ `
 struct Uniforms { time: f32, resolution: vec2f, status: f32, progress: f32, activity: f32 }
@@ -46,30 +47,31 @@ onMounted(async () => {
   const canvas = canvasRef.value;
   if (!canvas) return;
 
-  const gpu = await init();
-  const output = surface(gpu, canvas, { dpr: [1, 1.5] });
-  const vis = effect(gpu, SHADER, {
-    label: "playground",
-    set: { time: 0, resolution: [canvas.width, canvas.height], status: 2, progress: 0.64, activity: 0.42 },
-  });
-
-  const statusMap: Record<string, number> = { idle: 0, thinking: 1, working: 2, waiting: 3, success: 4, error: 5 };
-
-  function animate() {
-    vis.set({
-      time: performance.now() / 1000,
-      resolution: [canvas.width, canvas.height],
-      status: statusMap[props.status] ?? 2,
-      progress: props.progress / 100,
-      activity: props.activity / 100,
+  await withGpu(async (gpu) => {
+    const output = surface(gpu, canvas, { dpr: [1, 1.5] });
+    const vis = effect(gpu, SHADER, {
+      label: "playground",
+      set: { time: 0, resolution: [canvas.width, canvas.height], status: 2, progress: 0.64, activity: 0.42 },
     });
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
+
+    const statusMap: Record<string, number> = { idle: 0, thinking: 1, working: 2, waiting: 3, success: 4, error: 5 };
+
+    // Single frameLoop (owns its rAF); read reactive props inside the tick.
+    const handle = frameLoop(gpu, (frame) => {
+      vis.set({
+        time: performance.now() / 1000,
+        resolution: [canvas.width, canvas.height],
+        status: statusMap[props.status] ?? 2,
+        progress: props.progress / 100,
+        activity: props.activity / 100,
+      });
+      frame.pass(output, vis);
+    });
+    setLoop(handle);
+  });
 });
 
-onUnmounted(() => cancelAnimationFrame(rafId));
+onUnmounted(() => cleanup());
 </script>
 
 <template>
@@ -85,6 +87,7 @@ onUnmounted(() => cancelAnimationFrame(rafId));
           <span class="toolbar-status"><i></i> local simulation</span>
         </div>
         <canvas ref="canvasRef" width="900" height="560" aria-label="Live simulated agent animation"></canvas>
+        <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
         <div class="stage-footer">
           <span id="stage-status">{{ status }}</span>
           <span class="stage-progress"><span id="stage-progress-bar" :style="{ width: progress + '%' }"></span></span>

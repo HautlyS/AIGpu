@@ -4,6 +4,7 @@ import { useHautly } from "@hautly/entity/vue";
 import SiteHeader from "./components/SiteHeader.vue";
 import HeroSection from "./components/HeroSection.vue";
 import PlaygroundSection from "./components/PlaygroundSection.vue";
+import VueAdapterSection from "./components/VueAdapterSection.vue";
 import ExamplesSection from "./components/ExamplesSection.vue";
 import VisualGallerySection from "./components/VisualGallerySection.vue";
 import IntegrationsSection from "./components/IntegrationsSection.vue";
@@ -137,6 +138,7 @@ function closeModal() {
       @update:progress="progress = $event"
       @update:activity="activity = $event"
     />
+    <VueAdapterSection :status :progress :activity />
     <VisualGallerySection />
     <ExamplesSection
       :examples="examples"

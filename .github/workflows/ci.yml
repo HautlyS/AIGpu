@@ -46,6 +46,8 @@ jobs:
         run: pnpm build
       - name: Typecheck workspace and fixtures
         run: pnpm typecheck
+      - name: Build website (guards example mounting)
+        run: pnpm --filter @aigpu/website build
       - name: Run fast tests
         run: pnpm test:fast
       - name: Check bundle budgets

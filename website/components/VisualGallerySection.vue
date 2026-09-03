@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
 
-const canvasMap = new Map<HTMLCanvasElement, { gpu: any; output: any; vis: any; rafId: number }>();
+const gpuError = ref<string | null>(null);
+const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
+let gpu: any = null;
+let observer: IntersectionObserver | null = null;
 
 const RECIPES = [
   {
@@ -106,7 +110,7 @@ struct AgentParams {
   speed: f32,
   pad: vec2f,
   accent: vec4f,
-  secondary: vec2f,
+  secondary: vec4f,
   background: vec4f,
 }
 
@@ -204,28 +208,40 @@ onMounted(async () => {
   const canvases = document.querySelectorAll<HTMLElement>(".gallery-canvas[data-recipe]");
   if (!canvases.length) return;
 
-  const gpu = await init();
+  if (!isWebGPUAvailable()) {
+    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+  try {
+    gpu = await init();
+  } catch (e) {
+    console.error("[aigpu] VisualGallery init failed:", e);
+    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
 
-  const observer = new IntersectionObserver((entries) => {
+  observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
       if (entry.isIntersecting) {
-        mountCanvas(canvas, gpu);
+        mountCanvas(canvas);
       } else {
         unmountCanvas(canvas);
       }
     });
   }, { rootMargin: "200px" });
 
-  canvases.forEach((c) => observer.observe(c));
+  canvases.forEach((c) => observer!.observe(c));
 
   onUnmounted(() => {
-    observer.disconnect();
-    canvasMap.forEach(({ gpu, rafId }) => {
-      cancelAnimationFrame(rafId);
-      gpu.dispose();
+    observer?.disconnect();
+    observer = null;
+    canvasMap.forEach(({ loop }) => {
+      try { loop.stop(); } catch { /* ignore */ }
     });
     canvasMap.clear();
+    try { gpu?.dispose(); } catch { /* ignore */ }
+    gpu = null;
   });
 });
 
@@ -234,8 +250,8 @@ function getShaderForRecipe(recipeId: string): string {
   return GALLERY_SHADER.replace("const STYLE: u32 = 0u;", `const STYLE: u32 = ${styleIdx}u;`);
 }
 
-async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
-  if (canvasMap.has(canvas)) return;
+async function mountCanvas(canvas: HTMLCanvasElement) {
+  if (canvasMap.has(canvas) || !gpu) return;
   const recipeId = canvas.getAttribute("data-recipe") || "";
   const recipe = RECIPES.find((r) => r.id === recipeId);
   if (!recipe) return;
@@ -258,21 +274,18 @@ async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
     },
   });
 
-  let rafId = 0;
-  function animate() {
-    if (!canvasMap.has(canvas)) return;
+  // One frameLoop per canvas (owns its rAF). No outer rAF.
+  const loop = frameLoop(gpu, (frame) => {
     vis.set({ time: performance.now() / 1000 });
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
-  canvasMap.set(canvas, { gpu, output, vis, rafId });
+    frame.pass(output, vis);
+  });
+  canvasMap.set(canvas, { output, vis, loop });
 }
 
 function unmountCanvas(canvas: HTMLCanvasElement) {
   const entry = canvasMap.get(canvas);
   if (entry) {
-    cancelAnimationFrame(entry.rafId);
+    try { entry.loop.stop(); } catch { /* ignore */ }
     canvasMap.delete(canvas);
   }
 }
@@ -283,6 +296,7 @@ function unmountCanvas(canvas: HTMLCanvasElement) {
     <div class="section-heading">
       <div><p class="eyebrow">visual gallery</p><h2>Eight GPU recipes. One shader contract. Any agent state.</h2></div>
       <p class="section-note">Each recipe is a real WGSL fragment shader rendered live via WebGPU. The same <code>AgentParams</code> uniform drives all eight art directions.</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
     </div>
     <div class="gallery-grid">
       <article v-for="recipe in RECIPES" :key="recipe.id" class="gallery-card">

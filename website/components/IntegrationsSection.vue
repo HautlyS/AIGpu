@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
 
 const props = defineProps<{
   frameworks: any[];
@@ -20,56 +21,76 @@ const SHADERS: Record<string, string> = {
   fw_threetsl: `struct Uniforms { time: f32, resolution: vec2f } @group(0) @binding(0) var<uniform> u: Uniforms; fn hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); } fn noise(p: vec2f) -> f32 { let i = floor(p); let f = fract(p); let u = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2f(1,0)), u.x), mix(hash(i + vec2f(0,1)), hash(i + vec2f(1,1)), u.x), u.y); } @fragment fn main(@builtin(position) pos: vec4f) -> @location(0) vec4f { let uv = pos.xy / u.resolution; let grid = fract(uv * vec2f(20.0, 12.0)); let line = smoothstep(0.02, 0.0, min(grid.x, grid.y)); let pulse = sin(u.time + uv.x * 3.0) * 0.3 + 0.7; let texNoise = noise(uv * 8.0 + u.time * 0.2); let tri = abs(fract(uv.x * 15.0 + u.time * 0.3) - 0.5) + abs(fract(uv.y * 10.0 - u.time * 0.2) - 0.5); let triLine = smoothstep(0.08, 0.06, tri); let col = vec3f(line * pulse * 0.4 + triLine * 0.3 * texNoise); let glow = exp(-length(uv - vec2f(0.5)) * 3.0) * (0.3 + 0.2 * sin(u.time * 2.0)); col += vec3f(0.4, 0.6, 1.0) * glow; return vec4f(col, 1); }`,
 };
 
-const canvasMap = new Map<HTMLCanvasElement, { gpu: any; output: any; vis: any }>();
+const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
+const gpuError = ref<string | null>(null);
+let gpu: any = null;
+let observer: IntersectionObserver | null = null;
 
 onMounted(async () => {
   const canvases = document.querySelectorAll<HTMLElement>(".integration-canvas[data-visual]");
   if (!canvases.length) return;
 
-  const gpu = await init();
+  if (!isWebGPUAvailable()) {
+    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+  try {
+    gpu = await init();
+  } catch (e) {
+    console.error("[aigpu] IntegrationsSection init failed:", e);
+    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
 
-  const observer = new IntersectionObserver((entries) => {
+  observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
       if (entry.isIntersecting) {
-        mountCanvas(canvas, gpu);
+        mountCanvas(canvas);
       } else {
         unmountCanvas(canvas);
       }
     });
   }, { rootMargin: "200px" });
 
-  canvases.forEach((c) => observer.observe(c));
+  canvases.forEach((c) => observer!.observe(c));
 
   onUnmounted(() => {
-    observer.disconnect();
-    canvasMap.forEach(({ gpu }) => gpu.dispose());
+    observer?.disconnect();
+    observer = null;
+    canvasMap.forEach(({ loop }) => {
+      try { loop.stop(); } catch { /* ignore */ }
+    });
     canvasMap.clear();
+    // Single shared gpu — dispose exactly once.
+    try { gpu?.dispose(); } catch { /* ignore */ }
+    gpu = null;
   });
 });
 
-async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
-  if (canvasMap.has(canvas)) return;
+async function mountCanvas(canvas: HTMLCanvasElement) {
+  if (canvasMap.has(canvas) || !gpu) return;
   const id = canvas.getAttribute("data-visual") || "";
   const shader = SHADERS[id];
   if (!shader) return;
 
   const output = surface(gpu, canvas, { dpr: [1, 1.5] });
   const vis = effect(gpu, shader, { label: id, set: { time: 0, resolution: [canvas.width, canvas.height] } });
-  canvasMap.set(canvas, { gpu, output, vis });
 
-  let rafId = 0;
-  function animate() {
-    if (!canvasMap.has(canvas)) return;
+  // One frameLoop per canvas (owns its rAF). No outer rAF.
+  const loop = frameLoop(gpu, (frame) => {
     vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
+    frame.pass(output, vis);
+  });
+  canvasMap.set(canvas, { output, vis, loop });
 }
 
 function unmountCanvas(canvas: HTMLCanvasElement) {
-  canvasMap.delete(canvas);
+  const entry = canvasMap.get(canvas);
+  if (entry) {
+    try { entry.loop.stop(); } catch { /* ignore */ }
+    canvasMap.delete(canvas);
+  }
 }
 </script>
 
@@ -78,6 +99,7 @@ function unmountCanvas(canvas: HTMLCanvasElement) {
     <div class="section-heading">
       <div><p class="eyebrow">framework integrations</p><h2>Full integration for each framework.</h2></div>
       <p class="section-note">Click any card to see the complete integration code. Each preview is a unique GPU animation.</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
     </div>
     <div class="integration-grid">
       <article v-for="(fw, idx) in frameworks" :key="fw.name" class="integration-card" @click="emit('open-framework', fw)">

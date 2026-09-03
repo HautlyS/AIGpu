@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { init, effect, frameLoop, surface } from "aigpu";
+import { init, effect, frameLoop, surface, type FrameLoopHandle } from "aigpu";
+import { isWebGPUAvailable, WEBGPU_UNAVAILABLE_MSG } from "../composables/useWebGPU";
+
+const gpuError = ref<string | null>(null);
 
 const hautlyGallerySelected = ref("");
 
@@ -36,39 +39,53 @@ const MOOD_COLORS: Record<string, [number, number, number]> = {
   error: [1.0, 0.2, 0.2],
 };
 
-const canvasMap = new Map<HTMLCanvasElement, { gpu: any; output: any; vis: any; rafId: number }>();
+const canvasMap = new Map<HTMLCanvasElement, { output: any; vis: any; loop: FrameLoopHandle }>();
+let gpu: any = null;
+let observer: IntersectionObserver | null = null;
 
 onMounted(async () => {
   const canvases = document.querySelectorAll<HTMLElement>(".hautly-gallery-canvas[data-form]");
   if (!canvases.length) return;
 
-  const gpu = await init();
+  if (!isWebGPUAvailable()) {
+    gpuError.value = WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
+  try {
+    gpu = await init();
+  } catch (e) {
+    console.error("[aigpu] HautlyGallery init failed:", e);
+    gpuError.value = e instanceof Error ? e.message : WEBGPU_UNAVAILABLE_MSG;
+    return;
+  }
 
-  const observer = new IntersectionObserver((entries) => {
+  observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       const canvas = entry.target as HTMLCanvasElement;
       if (entry.isIntersecting) {
-        mountCanvas(canvas, gpu);
+        mountCanvas(canvas);
       } else {
         unmountCanvas(canvas);
       }
     });
   }, { rootMargin: "200px" });
 
-  canvases.forEach((c) => observer.observe(c));
+  canvases.forEach((c) => observer!.observe(c));
 
   onUnmounted(() => {
-    observer.disconnect();
-    canvasMap.forEach(({ gpu, rafId }) => {
-      cancelAnimationFrame(rafId);
-      gpu.dispose();
+    observer?.disconnect();
+    observer = null;
+    canvasMap.forEach(({ loop }) => {
+      try { loop.stop(); } catch { /* ignore */ }
     });
     canvasMap.clear();
+    try { gpu?.dispose(); } catch { /* ignore */ }
+    gpu = null;
   });
 });
 
-async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
-  if (canvasMap.has(canvas)) return;
+async function mountCanvas(canvas: HTMLCanvasElement) {
+  if (canvasMap.has(canvas) || !gpu) return;
   const form = canvas.getAttribute("data-form") || "orb";
   const mood = canvas.getAttribute("data-mood") || "idle";
   const shader = FORM_SHADERS[form] || FORM_SHADERS.orb;
@@ -80,21 +97,18 @@ async function mountCanvas(canvas: HTMLCanvasElement, gpu: any) {
     set: { time: 0, resolution: [canvas.width, canvas.height], mood: moodIdx / 5, energy: 0.5 },
   });
 
-  let rafId = 0;
-  function animate() {
-    if (!canvasMap.has(canvas)) return;
+  // One frameLoop per canvas (owns its rAF). No outer rAF.
+  const loop = frameLoop(gpu, (frame) => {
     vis.set({ time: performance.now() / 1000, resolution: [canvas.width, canvas.height] });
-    frameLoop(gpu, (frame) => frame.pass(output, vis));
-    rafId = requestAnimationFrame(animate);
-  }
-  rafId = requestAnimationFrame(animate);
-  canvasMap.set(canvas, { gpu, output, vis, rafId });
+    frame.pass(output, vis);
+  });
+  canvasMap.set(canvas, { output, vis, loop });
 }
 
 function unmountCanvas(canvas: HTMLCanvasElement) {
   const entry = canvasMap.get(canvas);
   if (entry) {
-    cancelAnimationFrame(entry.rafId);
+    try { entry.loop.stop(); } catch { /* ignore */ }
     canvasMap.delete(canvas);
   }
 }
@@ -109,6 +123,7 @@ function hautlyGallerySelect(item: { form: string; mood: string }) {
     <div class="section-heading">
       <div><p class="eyebrow">entity gallery</p><h2>Every form. Every mood. Animated.</h2></div>
       <p class="section-note">Click any entity to preview it live. Each form has unique breathing, particles, and expression patterns.</p>
+      <p v-if="gpuError" class="gpu-fallback">{{ gpuError }}</p>
     </div>
     <div class="hautly-gallery-grid">
       <div v-for="item in hautlyGallery" :key="item.form + '-' + item.mood"
