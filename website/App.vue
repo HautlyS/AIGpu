@@ -131,12 +131,15 @@ function closeModal() {
       @update:activity="activity = $event"
     />
     <ExamplesSection
-      :examples :filteredExamples :categories :filter :search
+      :examples="examples"
+      :filteredExamples="filteredExamples"
+      :categories="categories"
+      :filter="filter"
+      :search="search"
       @update:filter="filter = $event"
       @update:search="search = $event"
       @open-example="openExample"
       @copy-code="copyCode"
-      :examples-by-category="examplesByCategory"
     />
     <IntegrationsSection
       :frameworks
