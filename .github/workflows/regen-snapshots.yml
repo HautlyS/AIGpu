@@ -1,0 +1,42 @@
+name: Regen primitive snapshots (temporary)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 9.15.4
+  NODE_VERSION: 22
+
+jobs:
+  regen:
+    name: Regenerate primitive snapshots under Dawn/Lavapipe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Build software GPU test image
+        run: docker build -t aigpu-test-dev:ci -f infra/test-docker/Dockerfile.dev .
+      - name: Rewrite primitive snapshots
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            -e AIGPU_DOCKER_TEST=1 -e AIGPU_VALIDATE=require -e AIGPU_WRITE_SNAPSHOTS=1 aigpu-test-dev:ci \
+            sh -lc 'Xvfb :99 -screen 0 1024x768x24 >/tmp/xvfb.log 2>&1 & xp=$!; \
+              DISPLAY=:99 pnpm exec vitest run packages/aigpu-api/tests/scene/primitives; \
+              s=$?; kill "$xp"; exit "$s"'
+      - name: Upload rewritten snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: primitive-snapshots
+          path: packages/aigpu-api/tests/scene/primitives/__snapshots__/
