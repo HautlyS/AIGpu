@@ -4,6 +4,9 @@ import { resolve } from "path";
 
 export default defineConfig({
   plugins: [vue()],
+  // Project Pages serves the site from /AIGpu/, so emitted asset URLs must
+  // carry that prefix (otherwise /assets/... 404s at the domain root).
+  base: "/AIGpu/",
   resolve: {
     alias: [
       // More specific aliases first (order matters for Vite)
