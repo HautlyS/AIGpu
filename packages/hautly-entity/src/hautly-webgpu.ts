@@ -142,6 +142,8 @@ export function createWebGPUHautly(options: WebGPUHautlyOptions = {}): WebGPUHau
   let rafId = 0;
   let lastTime = performance.now() / 1000;
   let running = false;
+  let isVisible = true;
+  let visibilityObserver: IntersectionObserver | undefined;
 
   async function initGPU() {
     if (!gpuGlow) return;
@@ -195,6 +197,24 @@ export function createWebGPUHautly(options: WebGPUHautlyOptions = {}): WebGPUHau
       asciiCanvas.parentElement?.appendChild(asciiCanvas);
     }
     asciiCtx = asciiCanvas.getContext("2d");
+
+    // Visibility gating: pause when canvas scrolls out of view
+    if (typeof IntersectionObserver !== "undefined" && asciiCanvas) {
+      visibilityObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const wasVisible = isVisible;
+            isVisible = entry.isIntersecting;
+            if (!wasVisible && isVisible && running) {
+              lastTime = performance.now() / 1000;
+              rafId = requestAnimationFrame(tick);
+            }
+          }
+        },
+        { rootMargin: "200px" },
+      );
+      visibilityObserver.observe(asciiCanvas);
+    }
   }
 
   function renderAscii() {
@@ -231,7 +251,7 @@ export function createWebGPUHautly(options: WebGPUHautlyOptions = {}): WebGPUHau
   }
 
   function tick() {
-    if (!running) return;
+    if (!running || !isVisible) return;
     const now = performance.now() / 1000;
     const dt = Math.min(now - lastTime, 0.1);
     lastTime = now;
@@ -282,6 +302,7 @@ export function createWebGPUHautly(options: WebGPUHautlyOptions = {}): WebGPUHau
       this.stop();
       glowEffect?.dispose?.();
       gpuCtx?.dispose?.();
+      visibilityObserver?.disconnect();
       if (gpuCanvas?.parentElement) gpuCanvas.parentElement.removeChild(gpuCanvas);
       if (asciiCanvas?.parentElement) asciiCanvas.parentElement.removeChild(asciiCanvas);
     },

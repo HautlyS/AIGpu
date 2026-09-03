@@ -407,7 +407,7 @@ function generateFrame(state: HautlyState, width: number, height: number): Frame
         const ch = pickCoreChar(dist, angle, state.age, state.mood);
         const intensity = 0.3 + innerGlow * 0.5 + state.pulse * 0.2;
         cells.push(ch);
-        colors.push(palette.core + ";2;" + String(Math.round(intensity * 255)));
+        colors.push(ansiWithIntensity(palette.core, intensity));
         continue;
       }
 
@@ -431,7 +431,7 @@ function generateFrame(state: HautlyState, width: number, height: number): Frame
         const py = cy + p.y * radius;
         if (Math.abs(x - px) < 1 && Math.abs(y - py) < 1 && p.alpha > 0.2) {
           cells.push(p.char);
-          colors.push(p.palette ? p.palette : palette.particle);
+          colors.push(palette.particle);
           particleHit = true;
           break;
         }
@@ -595,4 +595,14 @@ function wrapText(text: string, maxLen: number): string[] {
 
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
+}
+
+/** Parse RGB from an ANSI true-color escape and rebuild with intensity multiplier. */
+function ansiWithIntensity(ansiBase: string, intensity: number): string {
+  const match = ansiBase.match(/\x1b\[38;2;(\d+);(\d+);(\d+)m/);
+  if (!match) return ansiBase;
+  const r = Math.min(255, Math.round(Number(match[1]) * intensity));
+  const g = Math.min(255, Math.round(Number(match[2]) * intensity));
+  const b = Math.min(255, Math.round(Number(match[3]) * intensity));
+  return `\x1b[38;2;${r};${g};${b}m`;
 }

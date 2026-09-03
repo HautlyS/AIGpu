@@ -6,9 +6,7 @@ AIGpu turns serializable agent state into GPU-rendered visuals. It provides an e
 
 AIGpu is designed for teams that want expressive agent interfaces without adopting a hosted dashboard, a proprietary AI SDK, a vendor-specific UI runtime, or a remote example catalog.
 
-> **Disclaimer and provenance:** AIGpu is a community-maintained, MIT-licensed fork and independent evolution of [Vercel Labs' original `vgpu` project](https://github.com/vercel-labs/vgpu). It is **not an official Vercel product**, is not sponsored or endorsed by Vercel, and does not require Vercel services. The fork removes the original repository's Vercel-specific application, hosted documentation, analytics, blob, and deployment ties, while preserving applicable upstream notices in [`LICENSE`](./LICENSE) and documenting fork provenance in [`NOTICE.md`](./NOTICE.md). Review the repository history and each dependency license before redistributing a derivative.
-
-The community goal is broader than a rename: AIGpu keeps the useful low-level WebGPU/WGSL foundation, then adds an agent-animation API, framework-neutral lifecycle control, optional adapters, serializable state tools, deterministic replay, local tooling, open examples, and a static showcase. “Model agnostic” means that AIGpu does not select, call, authenticate, or depend on an AI model provider; it renders the plain events and patches supplied by your application.
+"Model agnostic" means that AIGpu does not select, call, authenticate, or depend on an AI model provider; it renders the plain events and patches supplied by your application.
 
 | Property | AIGpu behavior |
 | --- | --- |
@@ -23,7 +21,6 @@ The community goal is broader than a rename: AIGpu keeps the useful low-level We
 ## Contents
 
 - [Why AIGpu](#why-aigpu)
-- [Technical highlights versus original `vgpu`](#technical-highlights-versus-original-vgpu)
 - [Install](#install)
 - [First visual in the browser](#first-visual-in-the-browser)
 - [Modern UI/UX patterns](#modern-uiux-patterns)
@@ -40,7 +37,7 @@ The community goal is broader than a rename: AIGpu keeps the useful low-level We
 - [Roadmap and next implementations](#roadmap-and-next-implementations)
 - [Development](#development)
 - [Project status](#project-status)
-- [License and provenance](#license-and-provenance)
+- [License](#license)
 
 ## Why AIGpu
 
@@ -49,28 +46,6 @@ Most agent interfaces begin with text, badges, or DOM transitions. AIGpu treats 
 This separation is intentional. AIGpu does not know whether the state came from a local model, a queue, a WebSocket, a worker, a database, or a human approval step. The application owns that boundary. AIGpu owns rendering, lifecycle, validation, and deterministic visual behavior.
 
 > **Core principle:** transport state as plain data, render it through the smallest suitable entrypoint, and keep framework adapters thin.
-
-## Technical highlights versus original `vgpu`
-
-The comparison below describes the direction of this fork, not a claim that every upstream implementation detail has disappeared from inherited low-level code. The source of truth is the current AIGpu repository and its tests.
-
-| Area | Original `vgpu` direction | AIGpu direction and differential |
-| --- | --- | --- |
-| Product boundary | Vercel Labs-originated WebGPU library and repository tooling | Independent community fork with no runtime requirement for Vercel, Next.js, Vercel Blob, Vercel Analytics, or a Vercel account |
-| Agent semantics | General GPU primitives | `agentAnimation()` with statuses, progress, activity, phases, deterministic palettes, and agent-oriented WGSL effects |
-| Frameworks | Core WebGPU API | Framework-neutral DOM/canvas controller plus optional React, Vue 3, and Svelte actions; framework packages remain separate and do not leak into the core |
-| AI/model coupling | Rendering library context | Model/provider agnostic: local models, hosted APIs, queues, WebSockets, workers, MCP tools, or human workflows can emit the same serializable patches |
-| State and orchestration | Application-specific | `AgentStore`, `AgentRegistry`, event envelopes, recording, and deterministic replay in `aigpu/tools`, without owning transport, prompts, permissions, or model calls |
-| Examples | Library-oriented examples | An offline visual gallery covering anime, enterprise, aesthetic, psychedelic, minimal-focus, fullscreen, geometry, multi-agent, replay, and framework usage |
-| Tooling | Repository-specific development flow | Local CLI, WGSL validation, mock adapter, Node/Dawn validation, stdio MCP, portable Agent Skills, plugin metadata, and CI checks |
-| Showcase | Hosted/docs-oriented presentation | Dependency-free GitHub Pages site with live state controls, Canvas2D fallback, copyable HTML/React/Vue/Svelte snippets, source links, and model-agnostic event examples |
-| Operations | Vendor deployment may be present in the upstream repository | GitHub Actions for CI, Pages, security, release verification, SBOM/checksums, and npm OIDC Trusted Publishing; local build/test remains usable offline |
-
-### What “fully agnostic” is—and is not
-
-The agnostic contract is functional at three boundaries. **Framework agnostic** means the rendering contract is implemented first in `packages/aigpu-api/src/dom.ts`; React and Vue wrap it with lifecycle hooks, while Svelte exposes a standard action and imports no Svelte runtime. **Model agnostic** means the runtime accepts plain `AgentAnimationPatch` and event data and never imports an LLM SDK or contacts a model provider. **Deployment agnostic** means the core can be built and tested locally and the showcase is static; GitHub Pages and npm are release options, not runtime dependencies.
-
-This does not mean that every environment supports every rendering capability. WebGPU still requires a compatible browser or adapter; SSR must defer canvas creation until the client; and a framework adapter requires that framework in the host application. Browsers without WebGPU can view the showcase's Canvas2D fallback, but that fallback is a showcase presentation path—not a replacement for the WebGPU renderer. These distinctions are tested and documented rather than hidden behind automatic provider detection.
 
 ## Install
 
@@ -610,24 +585,21 @@ The full local Agent Skills package can be inspected with:
 npx -y skills add ./ --list
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the repository workflow and [NOTICE.md](./NOTICE.md) for fork provenance.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the repository workflow.
 
 For branch protection, release sequencing, SBOM/checksum artifacts, npm trusted publishing, and the GitHub Actions matrix, read [`PRODUCTION.md`](./PRODUCTION.md).
 
 ## Project status
 
-AIGpu is an actively evolving open-source fork. The current workspace includes the core runtime, WGSL tooling, agent animations, DOM controller, React/Vue/Svelte adapters, multi-agent tools, event replay, visual gallery, offline CLI, local MCP, portable Agent Skills, and plugin metadata.
+AIGpu is an actively evolving open-source project. The current workspace includes the core runtime, WGSL tooling, agent animations, DOM controller, React/Vue/Svelte adapters, multi-agent tools, event replay, visual gallery, offline CLI, local MCP, portable Agent Skills, and plugin metadata.
 
 The API is suitable for experimentation and internal products. Treat minor-version changes as a reason to review bundle budgets, lifecycle behavior, and generated documentation before upgrading.
 
-## License and provenance
+## License
 
-AIGpu is distributed under the MIT license. The repository preserves the original upstream copyright notice for inherited portions in [`LICENSE`](./LICENSE) and identifies fork changes in [`NOTICE.md`](./NOTICE.md).
-
-The project does not require Vercel services, a hosted catalog, proprietary AI SDKs, remote telemetry, or a vendor account to build and test the library locally.
+AIGpu is distributed under the MIT license. See [`LICENSE`](./LICENSE) for details.
 
 ## References
 
 [1]: https://www.w3.org/TR/webgpu/ "WebGPU specification"
 [2]: https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API "MDN WebGPU API"
-[3]: https://github.com/vercel-labs/skills "Open Agent Skills CLI and ecosystem"

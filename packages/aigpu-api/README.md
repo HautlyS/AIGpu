@@ -80,6 +80,6 @@ pnpm check:skill-drift
 
 See the repository [CONTRIBUTING.md](https://github.com/hautlys/AIGpu/blob/main/CONTRIBUTING.md) for the local workflow.
 
-## License and provenance
+## License
 
-AIGpu is distributed under the MIT license. The repository preserves the original upstream copyright notice for the portions inherited from `vgpu` and identifies the fork changes in `NOTICE.md`.
+AIGpu is distributed under the MIT license. See [`LICENSE`](./LICENSE) for details.
