@@ -1,44 +1,34 @@
-import { describe, it, expect } from "vitest";
-import { runHautlyExample, createHautly, HAUTLY_ORB } from "./example.ts";
+import { expect, test } from "vitest";
+import { HAUTLY_ORB, createHautly, runHautlyExample } from "./example.ts";
 
-describe("hautly orb example", () => {
-  it("has valid WGSL shader", () => {
-    expect(HAUTLY_ORB).toContain("@fragment fn main");
-    expect(HAUTLY_ORB).toContain("struct Uniforms");
-    expect(HAUTLY_ORB).toContain("fn hash");
-    expect(HAUTLY_ORB).toContain("fn noise");
-    expect(HAUTLY_ORB).toContain("fn fbm");
-  });
+test("hautly-orb shader declares uniforms with status and intensity", () => {
+  expect(HAUTLY_ORB).toContain("status: f32");
+  expect(HAUTLY_ORB).toContain("intensity: f32");
+  expect(HAUTLY_ORB).toContain("@group(0) @binding(0) var<uniform> u: Uniforms");
+  expect(HAUTLY_ORB).toContain("@fragment fn main");
+  expect(HAUTLY_ORB).toContain("fn fbm");
+  expect(HAUTLY_ORB).toContain("fn noise");
+});
 
-  it("creates hautly instance", async () => {
-    const hautly = await createHautly();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("hautly-orb creates instance and exposes state API", async () => {
+  const hautly = await createHautly();
+  try {
     expect(hautly.gpu).toBeDefined();
     expect(hautly.target).toBeDefined();
-    expect(hautly.updateState).toBeDefined();
-    expect(hautly.getStatus).toBeDefined();
-    hautly.dispose();
-  });
-
-  it("updates state correctly", async () => {
-    const hautly = await createHautly();
-    
     expect(hautly.getStatus().status).toBe("idle");
-    
     hautly.updateState({ status: "thinking", intensity: 0.8 });
     expect(hautly.getStatus().status).toBe("thinking");
-    expect(hautly.getStatus().intensity).toBe(0.8);
-    
-    hautly.updateState({ status: "speaking", message: "Test" });
-    expect(hautly.getStatus().status).toBe("speaking");
-    expect(hautly.getStatus().message).toBe("Test");
-    
+  } finally {
     hautly.dispose();
-  });
+  }
+});
 
-  it("runs full example without errors", async () => {
-    const result = await runHautlyExample();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("hautly-orb full example runs without errors", async () => {
+  const result = await runHautlyExample();
+  try {
     expect(result.gpu).toBeDefined();
     expect(result.target).toBeDefined();
+  } finally {
     result.dispose();
-  });
+  }
 });

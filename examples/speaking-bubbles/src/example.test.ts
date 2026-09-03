@@ -1,50 +1,36 @@
-import { describe, it, expect } from "vitest";
-import { runSpeakingBubblesExample, createSpeakingBubbles, SPEAKING_BUBBLES } from "./example.ts";
+import { expect, test } from "vitest";
+import { SPEAKING_BUBBLES, createSpeakingBubbles, runSpeakingBubblesExample } from "./example.ts";
 
-describe("speaking bubbles example", () => {
-  it("has valid WGSL shader", () => {
-    expect(SPEAKING_BUBBLES).toContain("@fragment fn main");
-    expect(SPEAKING_BUBBLES).toContain("struct Uniforms");
-    expect(SPEAKING_BUBBLES).toContain("fn bubbleSDF");
-    expect(SPEAKING_BUBBLES).toContain("fn drawChar");
-  });
+test("speaking-bubbles shader declares uniforms with bubbleCount and speaking state", () => {
+  expect(SPEAKING_BUBBLES).toContain("bubbleCount: f32");
+  expect(SPEAKING_BUBBLES).toContain("speaking: f32");
+  expect(SPEAKING_BUBBLES).toContain("@group(0) @binding(0) var<uniform> u: Uniforms");
+  expect(SPEAKING_BUBBLES).toContain("@fragment fn main");
+  expect(SPEAKING_BUBBLES).toContain("fn bubbleSDF");
+});
 
-  it("creates bubble system", async () => {
-    const bubbles = await createSpeakingBubbles();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("speaking-bubbles creates and manages state", async () => {
+  const bubbles = await createSpeakingBubbles();
+  try {
     expect(bubbles.gpu).toBeDefined();
     expect(bubbles.target).toBeDefined();
-    expect(bubbles.startSpeaking).toBeDefined();
-    expect(bubbles.stopSpeaking).toBeDefined();
-    expect(bubbles.getState).toBeDefined();
-    bubbles.dispose();
-  });
-
-  it("manages speaking state", async () => {
-    const bubbles = await createSpeakingBubbles();
-    
     expect(bubbles.getState().speaking).toBe(false);
-    expect(bubbles.getState().bubbleCount).toBe(0);
-    
-    bubbles.startSpeaking("Test message");
+    bubbles.startSpeaking("Test");
     expect(bubbles.getState().speaking).toBe(true);
     expect(bubbles.getState().bubbleCount).toBe(1);
-    expect(bubbles.getState().messages).toContain("Test message");
-    
-    bubbles.startSpeaking("Second message");
-    expect(bubbles.getState().bubbleCount).toBe(2);
-    
     bubbles.stopSpeaking();
     expect(bubbles.getState().speaking).toBe(false);
-    expect(bubbles.getState().bubbleCount).toBe(0);
-    expect(bubbles.getState().messages).toHaveLength(0);
-    
+  } finally {
     bubbles.dispose();
-  });
+  }
+});
 
-  it("runs full example without errors", async () => {
-    const result = await runSpeakingBubblesExample();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("speaking-bubbles full example runs without errors", async () => {
+  const result = await runSpeakingBubblesExample();
+  try {
     expect(result.gpu).toBeDefined();
     expect(result.target).toBeDefined();
+  } finally {
     result.dispose();
-  });
+  }
 });

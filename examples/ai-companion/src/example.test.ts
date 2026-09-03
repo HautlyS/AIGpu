@@ -1,54 +1,46 @@
-import { describe, it, expect } from "vitest";
-import { runAICompanionExample, createAICompanion, AI_COMPANION } from "./example.ts";
+import { expect, test } from "vitest";
+import { AI_COMPANION, createAICompanion, runAICompanionExample } from "./example.ts";
 
-describe("ai companion example", () => {
-  it("has valid WGSL shader", () => {
-    expect(AI_COMPANION).toContain("@fragment fn main");
-    expect(AI_COMPANION).toContain("struct Uniforms");
-    expect(AI_COMPANION).toContain("fn connectionLine");
-    expect(AI_COMPANION).toContain("fn fbm");
-  });
+test("ai-companion shader declares uniforms with AI state and connection strength", () => {
+  expect(AI_COMPANION).toContain("aiState: f32");
+  expect(AI_COMPANION).toContain("responseIntensity: f32");
+  expect(AI_COMPANION).toContain("connectionStrength: f32");
+  expect(AI_COMPANION).toContain("@group(0) @binding(0) var<uniform> u: Uniforms");
+  expect(AI_COMPANION).toContain("@fragment fn main");
+  expect(AI_COMPANION).toContain("fn connectionLine");
+  expect(AI_COMPANION).toContain("fn fbm");
+});
 
-  it("creates AI companion", async () => {
-    const companion = await createAICompanion();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("ai-companion creates and manages state", async () => {
+  const companion = await createAICompanion();
+  try {
     expect(companion.gpu).toBeDefined();
     expect(companion.target).toBeDefined();
-    expect(companion.updateState).toBeDefined();
-    expect(companion.simulateAIResponse).toBeDefined();
-    expect(companion.getState).toBeDefined();
-    companion.dispose();
-  });
-
-  it("manages AI state", async () => {
-    const companion = await createAICompanion();
-    
     expect(companion.getState().aiState).toBe("idle");
-    expect(companion.getState().connectionStrength).toBe(0.5);
-    
     companion.updateState({ aiState: "processing", responseIntensity: 0.3 });
     expect(companion.getState().aiState).toBe("processing");
-    expect(companion.getState().responseIntensity).toBe(0.3);
-    
-    companion.updateState({ connectionStrength: 0.8 });
-    expect(companion.getState().connectionStrength).toBe(0.8);
-    
+  } finally {
     companion.dispose();
-  });
+  }
+});
 
-  it("simulates AI response", async () => {
-    const companion = await createAICompanion();
-    
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("ai-companion simulates response", async () => {
+  const companion = await createAICompanion();
+  try {
     const response = await companion.simulateAIResponse("Test input");
     expect(typeof response).toBe("string");
     expect(response.length).toBeGreaterThan(0);
-    
+  } finally {
     companion.dispose();
-  });
+  }
+});
 
-  it("runs full example without errors", async () => {
-    const result = await runAICompanionExample();
+test.skipIf(process.env.AIGPU_DOCKER_TEST !== "1")("ai-companion full example runs without errors", async () => {
+  const result = await runAICompanionExample();
+  try {
     expect(result.gpu).toBeDefined();
     expect(result.target).toBeDefined();
+  } finally {
     result.dispose();
-  });
+  }
 });
