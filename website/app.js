@@ -633,6 +633,7 @@ const HAUTLY_FORM_CHARS = {
 };
 
 let hautlyMouseX = 0, hautlyMouseY = 0, hautlyMouseOver = false;
+const hautlyMeshEffects = [];
 
 function drawHautlyOrb(ctx, w, h, t, state) {
   ctx.clearRect(0, 0, w, h);
@@ -644,8 +645,9 @@ function drawHautlyOrb(ctx, w, h, t, state) {
   const breathScale = 1 + Math.sin(t * 1.2 * Math.PI * 2) * 0.04;
   const pulse = Math.pow(Math.sin(t * Math.PI * 2) * 0.5 + 0.5, 3);
   const colors = HAUTLY_MOOD_COLORS[state.mood] || HAUTLY_MOOD_COLORS.idle;
+  const formChars = HAUTLY_FORM_CHARS[state.mood] || HAUTLY_FORM_CHARS.idle;
+  const particleChars = HAUTLY_PARTICLE_CHARS[state.mood] || HAUTLY_PARTICLE_CHARS.idle;
 
-  // Mouse attraction
   let mx = 0, my = 0;
   if (hautlyMouseOver) {
     const mdx = (hautlyMouseX - cx) / r;
@@ -657,89 +659,120 @@ function drawHautlyOrb(ctx, w, h, t, state) {
     }
   }
 
-  // Eye direction based on mouse
-  let eyeOffX = mx * 2, eyeOffY = my * 2;
+  const eyeOffX = mx * 2, eyeOffY = my * 2;
+  const cellSize = Math.max(8, Math.floor(r * 0.06));
+  const cols = Math.ceil(w / cellSize);
+  const rows = Math.ceil(h / cellSize);
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // Decay mesh effects
+  for (let i = hautlyMeshEffects.length - 1; i >= 0; i--) {
+    const e = hautlyMeshEffects[i];
+    e.strength *= 0.95;
+    if (e.strength < 0.01 || (e.type === 'click' && t - e.born > 2)) {
+      hautlyMeshEffects.splice(i, 1);
+    }
+  }
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = col * cellSize + cellSize / 2;
+      const y = row * cellSize + cellSize / 2;
       const dx = (x - cx) / (r * breathScale) + mx;
       const dy = (y - cy) / (r * breathScale) + my;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      let dist = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx);
 
-      // Core orb
+      // Apply mesh distortion
+      let meshOffX = 0, meshOffY = 0, meshBright = 0;
+      for (const effect of hautlyMeshEffects) {
+        const ex = (col / cols - effect.x) * w;
+        const ey = (row / rows - effect.y) * h;
+        const eDist = Math.sqrt(ex * ex + ey * ey);
+        const radius = 100 * effect.strength;
+        if (eDist < radius) {
+          const falloff = 1 - eDist / radius;
+          if (effect.type === 'hover') {
+            const wave = Math.sin(eDist * 0.06 - t * 8) * falloff * effect.strength * 2;
+            meshOffX += wave * (ex / (eDist || 1)) * 0.3;
+            meshOffY += wave * (ey / (eDist || 1)) * 0.3;
+            meshBright += falloff * effect.strength * 0.15;
+          } else if (effect.type === 'click') {
+            const age = t - effect.born;
+            const waveRadius = age * 250;
+            const waveDist = Math.abs(eDist - waveRadius);
+            const waveStrength = Math.max(0, 1 - age * 1.5) * falloff;
+            if (waveDist < 30) {
+              const push = (1 - waveDist / 30) * waveStrength * 5;
+              meshOffX += push * (ex / (eDist || 1)) * 0.3;
+              meshOffY += push * (ey / (eDist || 1)) * 0.3;
+              meshBright += waveStrength * 0.3;
+            }
+          }
+        }
+      }
+
+      const finalX = x + meshOffX;
+      const finalY = y + meshOffY;
+      const ddx = (finalX - cx) / (r * breathScale) + mx;
+      const ddy = (finalY - cy) / (r * breathScale) + my;
+      dist = Math.sqrt(ddx * ddx + ddy * ddy);
+
       if (dist < 1.0) {
-        // Eyes
         const eyeY = -0.05;
-        const eyeSize = 0.08;
-        if (Math.abs(dy - eyeY) < eyeSize && dist < 0.4) {
-          const le = Math.abs(dx - 0.15) < 0.1;
-          const re = Math.abs(dx + 0.15) < 0.1;
+        if (Math.abs(ddy - eyeY) < 0.1 && dist < 0.4) {
+          const le = Math.abs(ddx - 0.15) < 0.12;
+          const re = Math.abs(ddx + 0.15) < 0.12;
           if (le || re) {
             const ex = le ? 0.15 : -0.15;
-            const inPupil = Math.abs(dx - ex - eyeOffX * 0.04) < 0.035 && Math.abs(dy - eyeY - eyeOffY * 0.04) < 0.035;
-            if (inPupil) {
-              ctx.fillStyle = `rgb(0,0,0)`;
-              ctx.fillRect(x, y, 1, 1);
-              continue;
-            }
-            ctx.fillStyle = `rgba(${colors.eye.join(',')}, 0.9)`;
-            ctx.fillRect(x, y, 1, 1);
+            const inPupil = Math.abs(ddx - ex - eyeOffX * 0.04) < 0.04 && Math.abs(ddy - eyeY - eyeOffY * 0.04) < 0.04;
+            ctx.fillStyle = inPupil ? '#000' : `rgba(${colors.eye.join(',')}, ${0.9 + meshBright})`;
+            ctx.font = `bold ${cellSize - 1}px monospace`;
+            ctx.fillText(inPupil ? '\u25cf' : '\u25cb', col * cellSize + 1 + meshOffX, row * cellSize + cellSize - 1 + meshOffY);
             continue;
           }
         }
 
-        // Ring
         const ringDist = Math.abs(dist - 0.82);
-        if (ringDist < 0.06) {
+        if (ringDist < 0.08) {
           const ci = Math.floor(((angle / Math.PI + 1) * 0.5 + t * 0.5) * 10) % 10;
-          const ch = '\u00b7:;|=+*#%@'[ci];
-          ctx.fillStyle = `rgba(${colors.ring.join(',')}, 0.8)`;
-          ctx.font = `${Math.max(8, Math.floor(r * 0.06))}px monospace`;
-          ctx.fillText(ch, x, y);
+          ctx.fillStyle = `rgba(${colors.ring.join(',')}, ${0.8 + meshBright})`;
+          ctx.font = `${cellSize - 2}px monospace`;
+          ctx.fillText('\u00b7:;|=+*#%@'[ci], col * cellSize + 1 + meshOffX, row * cellSize + cellSize - 1 + meshOffY);
           continue;
         }
 
-        // Core body
         const glow = Math.pow(1 - dist, 0.5);
-        const ci = Math.floor(glow * (HAUTLY_FORM_CHARS[state.mood] || HAUTLY_FORM_CHARS.idle).length * 0.8);
-        const chars = HAUTLY_FORM_CHARS[state.mood] || HAUTLY_FORM_CHARS.idle;
-        const ch = chars[Math.min(ci, chars.length - 1)];
-        const intensity = 0.3 + glow * 0.5 + pulse * 0.2;
-        ctx.fillStyle = `rgba(${colors.core.join(',')}, ${intensity})`;
-        ctx.font = `${Math.max(7, Math.floor(r * 0.055))}px monospace`;
-        ctx.fillText(ch, x, y);
+        const ci = Math.min(formChars.length - 1, Math.floor(glow * formChars.length * 0.8));
+        const intensity = 0.3 + glow * 0.5 + pulse * 0.2 + meshBright;
+        ctx.fillStyle = `rgba(${colors.core.join(',')}, ${Math.min(1, intensity)})`;
+        ctx.font = `${cellSize - 2}px monospace`;
+        ctx.fillText(formChars[ci], col * cellSize + 1 + meshOffX, row * cellSize + cellSize - 1 + meshOffY);
         continue;
       }
 
-      // Outer glow / aura
       if (dist < 1.7) {
         const auraAlpha = Math.max(0, 1 - (dist - 1.0) / 0.7) * (0.3 + Math.sin(t * 1.2 * Math.PI * 2) * 0.2);
         const n = hautlySmoothNoise(x * 0.15, y * 0.15, t * 0.6);
         if (n < auraAlpha * 0.7) {
-          const ci = Math.floor(n * 5);
-          ctx.fillStyle = `rgba(${colors.aura.join(',')}, ${auraAlpha * 0.6})`;
-          ctx.font = `${Math.max(7, Math.floor(r * 0.04))}px monospace`;
-          ctx.fillText('\u00b7.:*+'[ci], x, y);
-          continue;
-        }
-      }
-
-      // Particles orbiting
-      for (let p = 0; p < 12; p++) {
-        const pa = (p / 12) * Math.PI * 2 + t * (0.3 + p * 0.05);
-        const pr = 1.1 + Math.sin(t * 0.8 + p) * 0.15;
-        const px = cx + Math.cos(pa) * pr * r - mx * r;
-        const py = cy + Math.sin(pa) * pr * r - my * r;
-        if (Math.abs(x - px) < 1.2 && Math.abs(y - py) < 1.2) {
-          const pchars = HAUTLY_PARTICLE_CHARS[state.mood] || HAUTLY_PARTICLE_CHARS.idle;
-          ctx.fillStyle = `rgba(${colors.particle.join(',')}, ${0.3 + Math.abs(Math.sin(t + p * 0.5)) * 0.5})`;
-          ctx.font = `${9 + (p % 3)}px monospace`;
-          ctx.fillText(pchars[p % pchars.length], x, y);
-          break;
+          const ci = Math.min(4, Math.floor(n * 5));
+          ctx.fillStyle = `rgba(${colors.aura.join(',')}, ${auraAlpha * 0.6 + meshBright})`;
+          ctx.font = `${cellSize - 2}px monospace`;
+          ctx.fillText('\u00b7.:*+'[ci], col * cellSize + 1 + meshOffX, row * cellSize + cellSize - 1 + meshOffY);
         }
       }
     }
+  }
+
+  const pSize = Math.max(8, Math.floor(r * 0.05));
+  ctx.font = `${pSize}px monospace`;
+  for (let p = 0; p < 12; p++) {
+    const pa = (p / 12) * Math.PI * 2 + t * (0.3 + p * 0.05);
+    const pr = 1.1 + Math.sin(t * 0.8 + p) * 0.15;
+    const px = cx + Math.cos(pa) * pr * r * breathScale - mx * r;
+    const py = cy + Math.sin(pa) * pr * r * breathScale - my * r;
+    if (px < 0 || px > w || py < 0 || py > h) continue;
+    ctx.fillStyle = `rgba(${colors.particle.join(',')}, ${0.3 + Math.abs(Math.sin(t + p * 0.5)) * 0.5})`;
+    ctx.fillText(particleChars[p % particleChars.length], px, py);
   }
 }
 
@@ -802,8 +835,6 @@ const drawCanvas = (canvas, rendererId, time, state) => {
     fw_react: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 6, chars: '><' }),
     fw_svelte: () => asciiWave(ctx, w, h, t, '~/\\'),
     fw_purejs: () => asciiParticles(ctx, w, h, t, { count: 60, chars: 'o*' }),
-    fw_nextjs: () => asciiWave(ctx, w, h, t, '~/\\'),
-    fw_threetsl: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 8, chars: '{}' }),
     fw_nextjs: () => asciiWave(ctx, w, h, t, '~/\\'),
     fw_threetsl: () => asciiGrid(ctx, w, h, t, { cols: 16, rows: 8, chars: '{}' }),
     vgpu_gradient: () => asciiWave(ctx, w, h, t, '.:;-=+*#%@'),
@@ -946,17 +977,38 @@ createApp({
     }
 
     function hautlyMouseMove(e) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      hautlyMouseX = ((e.clientX - rect.left) / rect.width) * 800;
-      hautlyMouseY = ((e.clientY - rect.top) / rect.height) * 480;
+      const canvas = e.currentTarget.querySelector ? e.currentTarget : e.currentTarget;
+      const rect = canvas.getBoundingClientRect();
+      hautlyMouseX = ((e.clientX - rect.left) / rect.width) * rect.width;
+      hautlyMouseY = ((e.clientY - rect.top) / rect.height) * rect.height;
       hautlyMouseOver = true;
+      // Add hover ripple mesh effect (throttled)
+      if (Math.random() < 0.12) {
+        hautlyMeshEffects.push({
+          type: 'hover',
+          x: (e.clientX - rect.left) / rect.width,
+          y: (e.clientY - rect.top) / rect.height,
+          strength: 0.5,
+          born: performance.now() / 1000,
+        });
+      }
     }
 
     function hautlyMouseLeave() {
       hautlyMouseOver = false;
     }
 
-    function hautlyClick() {
+    function hautlyClick(e) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      // Burst mesh effect
+      hautlyMeshEffects.push({
+        type: 'click',
+        x, y,
+        strength: 1,
+        born: performance.now() / 1000,
+      });
       const clickMsgs = [
         "*bloop* That tickles!",
         "I'm here! What do you need?",
@@ -967,37 +1019,43 @@ createApp({
       const msg = clickMsgs[Math.floor(Math.random() * clickMsgs.length)];
       hautlyShowSpeech(msg);
       hautlyEnergy.value = Math.min(1, hautlyEnergy.value + 0.1);
-      // Brief excited flash
       const prev = hautlyMood.value;
       hautlyMood.value = 'excited';
       setTimeout(() => { hautlyMood.value = prev; }, 800);
     }
 
     // Gallery hover animation loop
-    let galleryAnimFrame = 0;
+    const galleryAnimFrames = new Map();
     function hautlyGalleryHover(item, e) {
       const canvas = e.currentTarget.querySelector('.hautly-gallery-canvas');
       if (!canvas) return;
-      canvas.setAttribute('data-animating', 'true');
+      const entry = visibleCanvases.get(canvas);
+      if (entry) entry.hovered = true;
       const ctx = canvas.getContext('2d');
       const startTime = performance.now();
+      // Cancel any existing animation for this canvas
+      const existing = galleryAnimFrames.get(canvas);
+      if (existing) cancelAnimationFrame(existing);
       function animate() {
         if (canvas.matches(':hover')) {
           const t = (performance.now() - startTime) / 1000;
-          drawHautlyOrb(ctx, 320, 200, t, { mood: item.mood, form: item.form });
-          galleryAnimFrame = requestAnimationFrame(animate);
+          drawHautlyOrb(ctx, canvas.width, canvas.height, t, { mood: item.mood, form: item.form });
+          const id = requestAnimationFrame(animate);
+          galleryAnimFrames.set(canvas, id);
         } else {
-          canvas.removeAttribute('data-animating');
+          galleryAnimFrames.delete(canvas);
         }
       }
       animate();
     }
 
-    function hautlyGalleryLeave(item) {
-      cancelAnimationFrame(galleryAnimFrame);
-      document.querySelectorAll('.hautly-gallery-canvas[data-animating]').forEach(c => {
-        c.removeAttribute('data-animating');
-      });
+    function hautlyGalleryLeave(item, e) {
+      const canvas = e.currentTarget.querySelector('.hautly-gallery-canvas');
+      if (canvas) {
+        const id = galleryAnimFrames.get(canvas);
+        if (id) cancelAnimationFrame(id);
+        galleryAnimFrames.delete(canvas);
+      }
     }
 
     const categories = [
@@ -1134,8 +1192,9 @@ createApp({
       modalExample.value = ex;
       modalOpen.value = true;
       nextTick(() => {
-        const canvases = document.querySelectorAll('.modal-canvas');
-        canvases.forEach((c) => drawCanvas(c, ex.id, performance.now(), { status: status.value, progress: progress.value }));
+        document.querySelectorAll('.modal-canvas').forEach((c) => {
+          if (observer) observer.observe(c);
+        });
       });
     }
 
@@ -1144,8 +1203,9 @@ createApp({
       modalFramework.value = fw;
       modalOpen.value = true;
       nextTick(() => {
-        const canvases = document.querySelectorAll('.integration-canvas-large');
-        canvases.forEach((c) => drawCanvas(c, 'fw_' + fw.id, performance.now(), { status: status.value, progress: progress.value }));
+        document.querySelectorAll('.integration-canvas-large').forEach((c) => {
+          if (observer) observer.observe(c);
+        });
       });
     }
 
@@ -1156,51 +1216,108 @@ createApp({
     }
 
     let mainRaf;
+    const visibleCanvases = new Set();
+    let observer = null;
+    let resizeObserver = null;
+
+    function fitCanvasToLayout(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      const dpr = window.devicePixelRatio || 1;
+      const targetW = Math.round(rect.width * dpr);
+      const targetH = Math.round(rect.height * dpr);
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+    }
+
     function animateAll(time) {
-      // Existing data-visual canvases
-      document.querySelectorAll('[data-visual]').forEach((canvas) => {
-        const visualId = canvas.getAttribute('data-visual');
-        if (canvas.id === 'playground-canvas') {
-          drawCanvas(canvas, 'playground', time, { status: status.value, progress: progress.value });
+      visibleCanvases.forEach((entry) => {
+        const { canvas, visualId, isHautly, isGallery } = entry;
+        if (!canvas.isConnected) { visibleCanvases.delete(canvas); return; }
+
+        fitCanvasToLayout(canvas);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        if (isHautly) {
+          drawHautlyOrb(ctx, canvas.width, canvas.height, time / 1000, { mood: hautlyMood.value, form: hautlyForm.value });
+        } else if (isGallery) {
+          if (!canvas.matches(':hover')) {
+            const entity = canvas.getAttribute('data-entity');
+            if (entity) {
+              const [form, mood] = entity.split('-');
+              drawHautlyOrb(ctx, canvas.width, canvas.height, 0, { mood, form });
+            }
+          }
         } else {
           drawCanvas(canvas, visualId, time, { status: status.value, progress: progress.value });
         }
       });
 
-      // Hautly main entity canvas
-      const hautlyCanvas = document.getElementById('hautly-canvas');
-      if (hautlyCanvas) {
-        const ctx = hautlyCanvas.getContext('2d');
-        if (ctx) {
-          const t = time / 1000;
-          drawHautlyOrb(ctx, 800, 480, t, { mood: hautlyMood.value, form: hautlyForm.value });
-        }
+      if (visibleCanvases.size > 0) {
+        mainRaf = requestAnimationFrame(animateAll);
+      } else {
+        mainRaf = null;
       }
+    }
 
-      // Hautly gallery canvases (only animate on hover for performance)
-      document.querySelectorAll('.hautly-gallery-canvas:not([data-animating])').forEach((canvas) => {
-        const entity = canvas.getAttribute('data-entity');
-        if (!entity) return;
-        const [form, mood] = entity.split('-');
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Draw a static initial frame
-          drawHautlyOrb(ctx, 320, 200, 0, { mood, form });
-        }
+    function startAnimLoop() {
+      if (!mainRaf) mainRaf = requestAnimationFrame(animateAll);
+    }
+
+    function registerCanvas(canvas) {
+      fitCanvasToLayout(canvas);
+      const visualId = canvas.getAttribute('data-visual');
+      const isHautly = canvas.id === 'hautly-canvas';
+      const isGallery = canvas.classList.contains('hautly-gallery-canvas');
+      visibleCanvases.set(canvas, { canvas, visualId, isHautly, isGallery });
+      startAnimLoop();
+    }
+
+    function unregisterCanvas(canvas) {
+      visibleCanvases.delete(canvas);
+    }
+
+    function setupViewportObserver() {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            registerCanvas(e.target);
+          } else {
+            unregisterCanvas(e.target);
+          }
+        });
+      }, { rootMargin: '200px' });
+
+      document.querySelectorAll('[data-visual], #hautly-canvas, .hautly-gallery-canvas').forEach((el) => {
+        observer.observe(el);
       });
 
-      mainRaf = requestAnimationFrame(animateAll);
+      // ResizeObserver: re-fit all visible canvases on layout change
+      resizeObserver = new ResizeObserver(() => {
+        visibleCanvases.forEach(({ canvas }) => fitCanvasToLayout(canvas));
+      });
+      document.querySelectorAll('[data-visual], #hautly-canvas, .hautly-gallery-canvas').forEach((el) => {
+        resizeObserver.observe(el);
+      });
     }
 
     onMounted(() => {
-      mainRaf = requestAnimationFrame(animateAll);
+      setupViewportObserver();
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && modalOpen.value) closeModal();
+      });
+      window.addEventListener('resize', () => {
+        visibleCanvases.forEach(({ canvas }) => fitCanvasToLayout(canvas));
       });
     });
 
     onUnmounted(() => {
-      cancelAnimationFrame(mainRaf);
+      if (observer) observer.disconnect();
+      if (resizeObserver) resizeObserver.disconnect();
+      if (mainRaf) cancelAnimationFrame(mainRaf);
     });
 
     return {

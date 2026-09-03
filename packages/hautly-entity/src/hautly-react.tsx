@@ -67,9 +67,20 @@ export function useHautly(options: UseHautlyOptions = {}): UseHautlyReturn {
     const fontSize = 14;
     let lastTime = performance.now() / 1000;
     let running = true;
+    let isVisible = true;
+
+    function computeSize() {
+      const rect = canvas.getBoundingClientRect();
+      const newW = Math.round(rect.width * dpr);
+      const newH = Math.round(rect.height * dpr);
+      if (canvas.width !== newW || canvas.height !== newH) {
+        canvas.width = newW;
+        canvas.height = newH;
+      }
+    }
 
     function tick() {
-      if (!running) return;
+      if (!running || !isVisible) return;
       const now = performance.now() / 1000;
       const dt = Math.min(now - lastTime, 0.1);
       lastTime = now;
@@ -77,22 +88,19 @@ export function useHautly(options: UseHautlyOptions = {}): UseHautlyReturn {
       engine.tick(dt);
       speech.tick(dt);
 
+      computeSize();
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
 
-      const frameW = Math.floor(rect.width / (fontSize * 0.6));
-      const frameH = Math.floor(rect.height / fontSize);
+      const frameW = Math.max(10, Math.floor(rect.width / (fontSize * 0.6)));
+      const frameH = Math.max(4, Math.floor(rect.height / fontSize));
       const frame = renderer.render(engine.state, frameW, frameH);
 
-      // Render to canvas
-      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.font = `${fontSize}px monospace`;
       ctx.textBaseline = "top";
 
-      const cellW = rect.width / frameW;
-      const cellH = rect.height / frameH;
+      const cellW = canvas.width / frameW;
+      const cellH = canvas.height / frameH;
 
       for (let y = 0; y < frameH; y++) {
         for (let x = 0; x < frameW; x++) {
@@ -109,12 +117,40 @@ export function useHautly(options: UseHautlyOptions = {}): UseHautlyReturn {
       rafRef.current = requestAnimationFrame(tick);
     }
 
+    // ResizeObserver for responsive sizing
+    let resizeObserver: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => computeSize());
+      resizeObserver.observe(canvas);
+    }
+
+    // IntersectionObserver for visibility gating (pause when off-screen)
+    let visibilityObserver: IntersectionObserver | undefined;
+    if (typeof IntersectionObserver !== "undefined") {
+      visibilityObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const wasVisible = isVisible;
+            isVisible = entry.isIntersecting;
+            if (!wasVisible && isVisible && running) {
+              lastTime = performance.now() / 1000;
+              rafRef.current = requestAnimationFrame(tick);
+            }
+          }
+        },
+        { rootMargin: "200px" },
+      );
+      visibilityObserver.observe(canvas);
+    }
+
     rafRef.current = requestAnimationFrame(tick);
     setMounted(true);
 
     return () => {
       running = false;
       cancelAnimationFrame(rafRef.current);
+      resizeObserver?.disconnect();
+      visibilityObserver?.disconnect();
       engineRef.current = null;
       speechRef.current = null;
       setMounted(false);

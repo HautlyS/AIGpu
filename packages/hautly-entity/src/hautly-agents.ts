@@ -95,7 +95,7 @@ const DEFAULT_MOOD_MAP: Record<AgentEventType, HautlyMood> = {
   "message:user": "listening",
   "message:assistant": "speaking",
   "message:stream": "speaking",
-  "approval:pending": "waiting",
+  "approval:pending": "thinking",
   "approval:granted": "excited",
   "approval:denied": "error",
   "error": "error",
@@ -650,22 +650,31 @@ export function createAgentAIAdapter(adapter: AgentAdapter): AIResponseAdapter {
     async send(message: string): Promise<string> {
       adapter.send(message);
 
-      // Wait for the agent's response
       return new Promise<string>((resolve) => {
         let response = "";
-        const originalEmit = (adapter as any).emit;
+        let resolved = false;
 
-        // Temporarily intercept events to capture the response
-        const handler = (event: AgentEvent) => {
-          if (event.type === "message:assistant" && event.message) {
+        // Temporarily wrap the adapter's emit to capture the response
+        const originalEmit = adapter.emit.bind(adapter);
+        (adapter as any).emit = (event: AgentEvent) => {
+          originalEmit(event);
+          if (!resolved && event.type === "message:assistant" && event.message) {
             response = event.message;
+            resolved = true;
+            // Restore original emit
+            (adapter as any).emit = originalEmit;
             resolve(response);
           }
         };
 
-        const originalOnEvent = (adapter as any).config?.onEvent;
-        // Simple timeout-based resolution for streaming agents
-        setTimeout(() => resolve(response || "(no response)"), 10000);
+        // Timeout fallback for streaming agents
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            (adapter as any).emit = originalEmit;
+            resolve(response || "(no response)");
+          }
+        }, 10000);
       });
     },
   };

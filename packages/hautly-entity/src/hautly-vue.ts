@@ -133,7 +133,7 @@ export const HautlyEntity = defineComponent({
       if (t && props.speaking) engine.value?.set({ speaking: true, speechText: t });
     });
 
-    // Canvas rendering loop
+    // Canvas rendering loop with ResizeObserver + IntersectionObserver
     onMounted(() => {
       const canvas = canvasRef.value;
       if (!canvas) return;
@@ -146,28 +146,38 @@ export const HautlyEntity = defineComponent({
       const fontSize = props.fontSize;
       let rafId = 0;
       let lastTime = performance.now() / 1000;
+      let running = true;
+      let isVisible = true;
+
+      function computeSize() {
+        const rect = canvas!.getBoundingClientRect();
+        const newW = Math.round(rect.width * dpr);
+        const newH = Math.round(rect.height * dpr);
+        if (canvas!.width !== newW || canvas!.height !== newH) {
+          canvas!.width = newW;
+          canvas!.height = newH;
+        }
+      }
 
       function renderFrame() {
-        if (!engine.value) return;
+        if (!running || !isVisible || !engine.value) return;
         const now = performance.now() / 1000;
         const dt = Math.min(now - lastTime, 0.1);
         lastTime = now;
 
+        computeSize();
         const rect = canvas!.getBoundingClientRect();
-        canvas!.width = rect.width * dpr;
-        canvas!.height = rect.height * dpr;
-        ctx!.scale(dpr, dpr);
 
-        const frameW = Math.floor(rect.width / (fontSize * 0.6));
-        const frameH = Math.floor(rect.height / fontSize);
+        const frameW = Math.max(10, Math.floor(rect.width / (fontSize * 0.6)));
+        const frameH = Math.max(4, Math.floor(rect.height / fontSize));
         const frame = renderer.render(engine.value!.state, frameW, frameH);
 
-        ctx!.clearRect(0, 0, rect.width, rect.height);
+        ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
         ctx!.font = `${fontSize}px monospace`;
         ctx!.textBaseline = "top";
 
-        const cellW = rect.width / frameW;
-        const cellH = rect.height / frameH;
+        const cellW = canvas!.width / frameW;
+        const cellH = canvas!.height / frameH;
 
         for (let y = 0; y < frameH; y++) {
           for (let x = 0; x < frameW; x++) {
@@ -184,8 +194,40 @@ export const HautlyEntity = defineComponent({
         rafId = requestAnimationFrame(renderFrame);
       }
 
+      // ResizeObserver for responsive sizing
+      let resizeObserver: ResizeObserver | undefined;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => computeSize());
+        resizeObserver.observe(canvas);
+      }
+
+      // IntersectionObserver for visibility gating (pause when off-screen)
+      let visibilityObserver: IntersectionObserver | undefined;
+      if (typeof IntersectionObserver !== "undefined") {
+        visibilityObserver = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const wasVisible = isVisible;
+              isVisible = entry.isIntersecting;
+              if (!wasVisible && isVisible && running) {
+                lastTime = performance.now() / 1000;
+                rafId = requestAnimationFrame(renderFrame);
+              }
+            }
+          },
+          { rootMargin: "200px" },
+        );
+        visibilityObserver.observe(canvas);
+      }
+
       rafId = requestAnimationFrame(renderFrame);
-      onUnmounted(() => cancelAnimationFrame(rafId));
+
+      onUnmounted(() => {
+        running = false;
+        cancelAnimationFrame(rafId);
+        resizeObserver?.disconnect();
+        visibilityObserver?.disconnect();
+      });
     });
 
     return () => h("canvas", {

@@ -12,6 +12,18 @@ export interface AgentCanvasOptions extends AgentAnimationOptions {
   readonly init?: InitOptions;
   /** Canvas configuration, including DPR and automatic layout resize. */
   readonly surface?: SurfaceOptions;
+  /**
+   * IntersectionObserver-based visibility gating. When true (default), the frame loop pauses when
+   * the canvas scrolls out of view and resumes on re-entry, saving GPU/CPU work. An optional
+   * `rootMargin` string controls the pre-load margin (default "200px").
+   */
+  readonly visibility?: boolean | { readonly rootMargin?: string };
+  /**
+   * ResizeObserver-based auto-resize. When true (default for layout-backed canvases), the canvas
+   * automatically resizes to fill its CSS layout box on every frame tick (same as `autoResize` on
+   * the surface). Set to false to disable.
+   */
+  readonly autoResize?: boolean;
 }
 
 export interface MountedAgentCanvas {
@@ -44,31 +56,60 @@ export function mountAgentCanvas(canvas: SurfaceCanvas, options: AgentCanvasOpti
   let pending: AgentAnimationPatch[] = [];
   const suppliedGpu = options.gpu;
 
+  // IntersectionObserver for visibility gating
+  const visibilityOpts = options.visibility;
+  const visibilityEnabled = visibilityOpts !== false;
+  let observer: IntersectionObserver | undefined;
+  let isVisible = true;
+
   const ready = (async () => {
     const gpu = suppliedGpu ?? await createGpu("browser", options.init);
     if (destroyed) {
       if (!suppliedGpu) gpu.dispose();
       throw new Error("AIGpu canvas was destroyed before it finished mounting");
     }
-    const canvasSurface = surface(gpu, canvas, options.surface);
+    const canvasSurface = surface(gpu, canvas, {
+      autoResize: options.autoResize,
+      ...options.surface,
+    });
     const animation = agentAnimation(gpu, options);
     for (const patch of pending) animation.set(patch);
     pending = [];
     const time = clock(gpu);
     const current: MountedAgentCanvas = { gpu, surface: canvasSurface, animation };
     mounted = current;
-    frameHandle = frameLoop(gpu, (frame) => {
-      if (destroyed) return;
-      animation.tick(time.time);
-      frame.pass(canvasSurface, animation.effect);
-    });
-    if (destroyed) frameHandle.stop();
+
+    // Set up IntersectionObserver for viewport gating
+    if (visibilityEnabled && typeof IntersectionObserver !== "undefined" && canvas instanceof Element) {
+      const rootMargin = typeof visibilityOpts === "object" ? visibilityOpts.rootMargin : "200px";
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const wasVisible = isVisible;
+            isVisible = entry.isIntersecting;
+            // Resume the loop when canvas re-enters viewport
+            if (!wasVisible && isVisible && !destroyed) startLoop();
+          }
+        },
+        { rootMargin },
+      );
+      observer.observe(canvas);
+    }
+
+    const startLoop = () => {
+      if (destroyed || frameHandle) return;
+      frameHandle = frameLoop(gpu, (frame) => {
+        if (destroyed || !isVisible) { frameHandle?.stop(); frameHandle = undefined; return; }
+        animation.tick(time.time);
+        frame.pass(canvasSurface, animation.effect);
+      });
+    };
+    startLoop();
+
+    if (destroyed) frameHandle?.stop();
     return current;
   })();
 
-  // A framework cleanup may run before an async adapter has a chance to await `ready`.
-  // Keep that cancellation from becoming an unhandled rejection while still exposing the
-  // original promise to callers that want to observe setup failures.
   void ready.catch(() => undefined);
 
   return {
@@ -89,6 +130,7 @@ export function mountAgentCanvas(canvas: SurfaceCanvas, options: AgentCanvasOpti
       destroyed = true;
       pending = [];
       frameHandle?.stop();
+      observer?.disconnect();
       mounted?.surface.dispose();
       if (!suppliedGpu) mounted?.gpu.dispose();
     },

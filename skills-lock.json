@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "aigpu": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "ec1f777340841cbac158a1d707af5285c9b90c76b7c5087d8a9b47ac8b31cef0"
+    },
+    "hautly-entity": {
+      "source": ".",
+      "sourceType": "local",
+      "computedHash": "2fe5a6afef98f3c75cbf617de78dedf009d115a39d52ea91c1b0545f7013b76b"
+    }
+  }
+}

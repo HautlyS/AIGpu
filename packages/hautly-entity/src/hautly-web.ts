@@ -3,6 +3,7 @@
  *
  * Renders Hautly entities on a Canvas2D element or as styled DOM overlays.
  * Works in any HTML page without React, Vue, or Svelte.
+ * Fully responsive: auto-resizes to container, supports hover/click mesh effects.
  */
 
 import { createHautly, type HautlyEngine, type HautlyOptions, type HautlyPatch, type HautlyMood } from "./hautly-core.ts";
@@ -27,6 +28,10 @@ export interface WebHautlyOptions extends HautlyOptions {
   interactive?: boolean;
   /** Callback when user clicks the entity. */
   onClick?: (engine: HautlyEngine) => void;
+  /** Enable hover mesh effect. Default: true when interactive. */
+  hoverEffect?: boolean;
+  /** Enable click burst effect. Default: true when interactive. */
+  clickEffect?: boolean;
 }
 
 export interface WebHautly {
@@ -52,6 +57,17 @@ export interface WebHautly {
   setPosition(x: number, y: number): this;
 }
 
+// ─── Mesh Effect State ───────────────────────────────────────────────────────
+
+interface MeshEffect {
+  type: "hover" | "click";
+  x: number;
+  y: number;
+  strength: number;
+  decay: number;
+  born: number;
+}
+
 // ─── Canvas Renderer ─────────────────────────────────────────────────────────
 
 function renderToCanvas(
@@ -59,12 +75,13 @@ function renderToCanvas(
   frame: RenderedFrame,
   fontSize: number,
   background: string,
+  meshEffects: MeshEffect[],
+  t: number,
 ): void {
   const { width, height, cells, colors } = frame;
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
 
-  // Clear
   if (background === "transparent") {
     ctx.clearRect(0, 0, cw, ch);
   } else {
@@ -85,10 +102,66 @@ function renderToCanvas(
       if (char === " ") continue;
 
       const color = colors[idx];
-      ctx.fillStyle = color ? ansiToCss(color) : "#ffffff";
-      ctx.fillText(char, x * cellW, y * cellH);
+      let finalColor = color ? ansiToCss(color) : "#ffffff";
+      let offsetX = 0;
+      let offsetY = 0;
+      let scale = 1;
+
+      // Apply mesh distortion effects
+      for (const effect of meshEffects) {
+        const ex = (x / width - effect.x) * cw;
+        const ey = (y / height - effect.y) * ch;
+        const dist = Math.sqrt(ex * ex + ey * ey);
+        const radius = 120 * effect.strength;
+        if (dist < radius) {
+          const falloff = 1 - dist / radius;
+          if (effect.type === "hover") {
+            // Gentle ripple on hover
+            const wave = Math.sin(dist * 0.05 - t * 8) * falloff * effect.strength * 3;
+            offsetX += wave * (ex / (dist || 1));
+            offsetY += wave * (ey / (dist || 1));
+            // Brighten nearby cells
+            const brighten = falloff * effect.strength * 0.3;
+            finalColor = brightenColor(finalColor, brighten);
+          } else if (effect.type === "click") {
+            // Burst shockwave on click
+            const age = t - effect.born;
+            const waveRadius = age * 300;
+            const waveDist = Math.abs(dist - waveRadius);
+            const waveStrength = Math.max(0, 1 - age * effect.decay) * falloff;
+            if (waveDist < 40) {
+              const push = (1 - waveDist / 40) * waveStrength * 8;
+              offsetX += push * (ex / (dist || 1));
+              offsetY += push * (ey / (dist || 1));
+              finalColor = brightenColor(finalColor, waveStrength * 0.5);
+              scale = 1 + waveStrength * 0.3;
+            }
+          }
+        }
+      }
+
+      ctx.save();
+      if (scale !== 1) {
+        const sx = x * cellW + cellW / 2 + offsetX;
+        const sy = y * cellH + cellH / 2 + offsetY;
+        ctx.translate(sx, sy);
+        ctx.scale(scale, scale);
+        ctx.translate(-sx, -sy);
+      }
+      ctx.fillStyle = finalColor;
+      ctx.fillText(char, x * cellW + offsetX, y * cellH + offsetY);
+      ctx.restore();
     }
   }
+}
+
+function brightenColor(color: string, amount: number): string {
+  const match = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+  if (!match) return color;
+  const r = Math.min(255, Math.round(Number(match[1]) + amount * 255));
+  const g = Math.min(255, Math.round(Number(match[2]) + amount * 255));
+  const b = Math.min(255, Math.round(Number(match[3]) + amount * 255));
+  return `rgb(${r},${g},${b})`;
 }
 
 // ─── DOM Renderer ────────────────────────────────────────────────────────────
@@ -98,7 +171,6 @@ function renderToDom(
   frame: RenderedFrame,
   fontSize: number,
 ): void {
-  // Clear previous content
   container.innerHTML = "";
 
   const pre = document.createElement("pre");
@@ -162,7 +234,6 @@ function renderSpeechOnCanvas(
 
   ctx.font = `${fontSize}px monospace`;
 
-  // Bubble border
   for (let r = 0; r < geo.height; r++) {
     for (let c = 0; c < geo.width; c++) {
       let ch = " ";
@@ -190,7 +261,6 @@ function ansiToCss(ansiColor: string): string {
     return `rgb(${r},${g},${b})`;
   }
 
-  // Fallback: map common ANSI codes
   const codeMatch = ansiColor.match(/\x1b\[38;5;(\d+)m/);
   if (codeMatch) {
     const code = parseInt(codeMatch[1]);
@@ -220,8 +290,9 @@ export function createWebHautly(options: WebHautlyOptions = {}): WebHautly {
   const dpr = options.dpr ?? (typeof window !== "undefined" ? window.devicePixelRatio : 1);
   const background = options.background ?? "transparent";
   const mode = options.mode ?? "canvas";
+  const hoverEnabled = options.hoverEffect !== false;
+  const clickEnabled = options.clickEffect !== false;
 
-  // Create or use provided element
   let element: HTMLElement;
   let canvas: HTMLCanvasElement | undefined;
   let ctx: CanvasRenderingContext2D | undefined;
@@ -259,27 +330,69 @@ export function createWebHautly(options: WebHautlyOptions = {}): WebHautly {
   let rafId: number | undefined;
   let lastTime = performance.now() / 1000;
   let running = false;
+  const meshEffects: MeshEffect[] = [];
 
   function computeSize() {
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx = canvas.getContext("2d")!;
-      ctx.scale(dpr, dpr);
-      frameW = Math.floor(rect.width / (fontSize * 0.6));
-      frameH = Math.floor(rect.height / fontSize);
+      const newW = Math.round(rect.width * dpr);
+      const newH = Math.round(rect.height * dpr);
+      if (canvas.width !== newW || canvas.height !== newH) {
+        canvas.width = newW;
+        canvas.height = newH;
+        ctx = canvas.getContext("2d")!;
+        ctx.scale(dpr, dpr);
+      }
+      frameW = Math.max(10, Math.floor(rect.width / (fontSize * 0.6)));
+      frameH = Math.max(4, Math.floor(rect.height / fontSize));
     }
   }
 
+  // Responsive: ResizeObserver on the canvas
+  let resizeObserver: ResizeObserver | undefined;
+  if (typeof ResizeObserver !== "undefined" && canvas) {
+    resizeObserver = new ResizeObserver(() => computeSize());
+    resizeObserver.observe(canvas);
+  }
+
+  // Responsive: listen for fullscreen changes
+  function onFullscreenChange() { computeSize(); }
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+
+  // IntersectionObserver for visibility gating
+  let visibilityObserver: IntersectionObserver | undefined;
+  let isVisible = true;
+  if (typeof IntersectionObserver !== "undefined" && canvas) {
+    visibilityObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          isVisible = entry.isIntersecting;
+          if (isVisible && !running) tick();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    visibilityObserver.observe(canvas);
+  }
+
   function tick() {
-    if (!running) return;
+    if (!running || !isVisible) return;
     const now = performance.now() / 1000;
     const dt = Math.min(now - lastTime, 0.1);
     lastTime = now;
 
     engine.tick(dt);
     speech.tick(dt);
+
+    // Decay mesh effects
+    const t = now;
+    for (let i = meshEffects.length - 1; i >= 0; i--) {
+      const e = meshEffects[i];
+      e.strength *= 0.96;
+      if (e.strength < 0.01 || (e.type === "click" && t - e.born > 2)) {
+        meshEffects.splice(i, 1);
+      }
+    }
 
     render();
     rafId = requestAnimationFrame(tick);
@@ -289,9 +402,8 @@ export function createWebHautly(options: WebHautlyOptions = {}): WebHautly {
     const frame = activeRenderer.render(engine.state, frameW, frameH);
 
     if (mode === "canvas" && ctx) {
-      renderToCanvas(ctx, frame, fontSize, background);
+      renderToCanvas(ctx, frame, fontSize, background, meshEffects, performance.now() / 1000);
 
-      // Overlay speech bubble
       if (speech.active) {
         const speechColor = ansiToCss("\x1b[38;2;200;230;255m");
         renderSpeechOnCanvas(
@@ -310,12 +422,46 @@ export function createWebHautly(options: WebHautlyOptions = {}): WebHautly {
     }
   }
 
-  // Interactive mode
+  // Interactive mode with mesh effects
   if (options.interactive && canvas) {
     canvas.style.pointerEvents = "auto";
-    canvas.addEventListener("click", () => {
+    canvas.style.cursor = "pointer";
+
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas!.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      if (clickEnabled) {
+        meshEffects.push({ type: "click", x, y, strength: 1, decay: 1.5, born: performance.now() / 1000 });
+      }
+      engine.blink();
       options.onClick?.(engine);
     });
+
+    if (hoverEnabled) {
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas!.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = (e.clientY - rect.top) / rect.height;
+        // Track eye toward mouse
+        const dx = x - 0.5;
+        const dy = y - 0.5;
+        if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+          const dir = Math.abs(dx) > Math.abs(dy)
+            ? (dx > 0 ? "right" : "left")
+            : (dy > 0 ? "down" : "up");
+          engine.set({ eye: dir });
+        }
+        // Add gentle hover ripple (throttled)
+        if (Math.random() < 0.15) {
+          meshEffects.push({ type: "hover", x, y, strength: 0.6, decay: 0, born: 0 });
+        }
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        engine.set({ eye: "center" });
+      });
+    }
   }
 
   const instance: WebHautly = {
@@ -356,6 +502,9 @@ export function createWebHautly(options: WebHautlyOptions = {}): WebHautly {
 
     destroy(): void {
       this.stop();
+      resizeObserver?.disconnect();
+      visibilityObserver?.disconnect();
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
       if (canvas?.parentElement) canvas.parentElement.removeChild(canvas);
       else if (element.parentElement && !options.container) element.parentElement.removeChild(element);
     },

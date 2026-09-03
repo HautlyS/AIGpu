@@ -238,11 +238,10 @@ export function createTerminalLayout(
   return {
     entities,
     renderAll(): void {
-      let buf = hideCursor();
+      process.stdout.write(hideCursor());
       for (const e of entities) {
-        const frame = (e as any).render();
+        e.render();
       }
-      process.stdout.write(buf);
     },
     startAll(): () => void {
       const stops = entities.map(e => e.start());
